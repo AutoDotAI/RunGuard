@@ -91,6 +91,13 @@ class RunLogRecord(Base):
     )
 
 
+class WorkerHeartbeatRecord(Base):
+    __tablename__ = "worker_heartbeat"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_seen_at: Mapped[str] = mapped_column(String(35), nullable=False)
+
+
 class AlertRecord(Base):
     __tablename__ = "alerts"
 
