@@ -130,8 +130,9 @@ def test_exited_cli_leaves_no_running_stdout_child(tmp_path, monkeypatch):
     deadline = time.monotonic() + 1
     while True:
         try:
-            state = child_state.read_text().split()[2]
-        except FileNotFoundError:
+            fields = child_state.read_text().split()
+            state = fields[2] if len(fields) > 2 else "gone"
+        except OSError:
             state = "gone"
         if state in {"Z", "gone"} or time.monotonic() >= deadline:
             break
