@@ -1,0 +1,13 @@
+# Local-only rehearsal images. Merge with compose.prod.yaml and never start proxy.
+services:
+  migrate:
+    build: !reset null
+  api:
+    build: !reset null
+  worker:
+    build: !reset null
+  web:
+    build: !reset null
+  egress_guard:
+    image: runguard-egress:${RUNGUARD_IMAGE_TAG:?Set local rehearsal release A or B}
+    build: !reset null

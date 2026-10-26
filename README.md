@@ -1,5 +1,8 @@
 # RunGuard
 
+Deployment backup, manual rollback, and local rehearsal commands are in
+[docs/deployment.md](docs/deployment.md).
+
 RunGuard is being built in [public issues](https://github.com/AutoDotAI/RunGuard/issues).
 This checkout contains a FastAPI backend with SQLite-backed local accounts,
 durable workers, runs, and logs, a separate Python worker process, and a source

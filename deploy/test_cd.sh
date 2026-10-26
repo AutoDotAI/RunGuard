@@ -7,8 +7,8 @@ cd "$repo_dir"
 # and missing SSH credentials, both of which must fail before network access.
 uv run --no-project --with pyyaml==6.0.2 python -m unittest discover -s deploy/tests -p 'test_*.py' -v
 uv run --no-project --with pyyaml==6.0.2 python deploy/validate_workflows.py .github/workflows/ci.yml .github/workflows/promote.yml
-bash -n deploy/ssh_deploy.sh deploy/remote_deploy.sh
-python3 -m py_compile deploy/release.py deploy/smoke.py deploy/validate_workflows.py
+bash -n deploy/ssh_deploy.sh deploy/remote_deploy.sh deploy/remote_rollback.sh deploy/rehearse_rollback.sh
+python3 -m py_compile deploy/release.py deploy/state.py deploy/backup.py deploy/check_compatibility.py deploy/smoke.py deploy/validate_workflows.py
 envfile=$(mktemp)
 config=$(mktemp)
 trap 'rm -f "$envfile" "$config"' EXIT INT TERM

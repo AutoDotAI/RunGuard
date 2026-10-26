@@ -58,7 +58,8 @@ successful release, and the previous successful release are recorded under
 `state/` on that host. These records contain commit, environment, time, result,
 Actions run ID, and three digests; no credentials. A failed attempt writes
 `latest-failure.json`, leaves the prior successful record, and requires an
-operator to investigate. It does not claim rollback; #25 covers that.
+operator to investigate. The manual rollback command and safe SQLite backup
+procedure are in [docs/deployment.md](../docs/deployment.md).
 
 ## Promotion and evidence
 

@@ -24,7 +24,7 @@ chmod 600 "$tempdir/key" "$tempdir/known_hosts"
 ssh_opts=(-i "$tempdir/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tempdir/known_hosts" -o BatchMode=yes)
 target="$CD_SSH_USER@$CD_SSH_HOST"
 # The host-local .env and release records are intentionally not overwritten.
-tar -czf - compose.prod.yaml compose.cd.yaml deploy/Caddyfile deploy/egress deploy/release.py deploy/smoke.py deploy/remote_deploy.sh | \
+tar -czf - compose.prod.yaml compose.cd.yaml deploy/Caddyfile deploy/egress deploy/release.py deploy/state.py deploy/backup.py deploy/check_compatibility.py deploy/smoke.py deploy/remote_deploy.sh deploy/remote_rollback.sh | \
   ssh "${ssh_opts[@]}" "$target" "mkdir -p \"\$HOME/runguard/$environment\" && tar -xzf - -C \"\$HOME/runguard/$environment\""
 ssh "${ssh_opts[@]}" "$target" "cd \"\$HOME/runguard/$environment\" && bash deploy/remote_deploy.sh $environment $commit $api_digest $web_digest $egress_digest $run_id"
 ssh "${ssh_opts[@]}" "$target" "cat \"\$HOME/runguard/$environment/state/current.json\"" > "$output_path"
