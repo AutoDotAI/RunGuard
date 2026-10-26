@@ -8,7 +8,8 @@ from threading import RLock
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .db import RunLogRecord, RunRecord, UserRepository, WorkerRecord
@@ -65,8 +66,8 @@ def validate_public_url(value: str) -> str:
 class PersistentStore:
     def __init__(self, users: UserRepository):
         self.users = users
-        # This lock maintains the current single-process enqueue rule. A database
-        # constraint for multiple API processes is part of Issue #8.
+        # The lock reduces contention within one process. SQLite transactions and
+        # the partial unique index enforce limits across independent processes.
         self.lock = RLock()
 
     def create_user(self, email: str, password_hash: str) -> dict:
@@ -174,14 +175,16 @@ class PersistentStore:
     def _enqueue(self, session: Session, owner: str, worker: WorkerRecord,
                  url: str, retry_of: str | None, name: str,
                  config_snapshot_json: str) -> EnqueuedRun:
-        active = session.scalars(select(RunRecord).where(
+        active_count = session.scalar(select(func.count()).select_from(RunRecord).where(
             RunRecord.owner_user_id == owner,
-            RunRecord.status.in_(("queued", "running")))).all()
-        existing = next((run for run in active if run.worker_id == worker.id), None)
+            RunRecord.status.in_(("queued", "running")))) or 0
+        existing = session.scalar(select(RunRecord).where(
+            RunRecord.worker_id == worker.id,
+            RunRecord.status.in_(("queued", "running"))).limit(1))
         if existing:
             raise Problem(409, "RUN_ALREADY_ACTIVE", "This worker already has an active run",
                           {"run_id": existing.id})
-        if len(active) >= 10:
+        if active_count >= 10:
             raise Problem(429, "TOO_MANY_ACTIVE_RUNS", "At most 10 runs may be active")
         timestamp = now()
         run = RunRecord(id=str(uuid4()), worker_id=worker.id, owner_user_id=owner,
@@ -191,23 +194,37 @@ class PersistentStore:
                         duration_ms=None, http_status=None, result_json=None,
                         error_code=None, error_message=None, retry_of_run_id=retry_of,
                         trace_id=None, traceparent=None)
-        session.add(run)
-        session.flush()  # Insert the parent before its foreign-keyed log entry.
-        session.add(RunLogRecord(run_id=run.id, owner_user_id=owner,
-                                 timestamp=timestamp, level="INFO", event="RUN_QUEUED",
-                                 message="Run queued for execution"))
-        session.commit()
+        try:
+            session.add(run)
+            session.flush()  # Insert the parent before its foreign-keyed log entry.
+            session.add(RunLogRecord(run_id=run.id, owner_user_id=owner,
+                                     timestamp=timestamp, level="INFO", event="RUN_QUEUED",
+                                     message="Run queued for execution"))
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            existing = session.scalar(select(RunRecord).where(
+                RunRecord.worker_id == worker.id,
+                RunRecord.status.in_(("queued", "running"))).limit(1))
+            if existing:
+                raise Problem(409, "RUN_ALREADY_ACTIVE", "This worker already has an active run",
+                              {"run_id": existing.id}) from None
+            raise
         return EnqueuedRun(run_id=run.id, worker_id=worker.id,
                            status="queued", created_at=timestamp)
 
     def run_worker(self, owner: str, worker_id: str) -> EnqueuedRun:
         with self.lock, self.users.sessions() as session:
+            # Claim SQLite's only writer slot before reading either quota. A
+            # second API process waits, then observes the committed first run.
+            session.execute(text("BEGIN IMMEDIATE"))
             worker = self._owned_worker(session, owner, worker_id)
             return self._enqueue(session, owner, worker, worker.url, None,
                                  worker.name, worker.config_json)
 
     def retry_run(self, owner: str, run_id: str) -> EnqueuedRun:
         with self.lock, self.users.sessions() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
             original = self._owned_run(session, owner, run_id)
             if original.status != "failed":
                 raise Problem(409, "INVALID_RETRY_STATE", "Only failed runs can be retried")

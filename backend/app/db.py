@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, create_engine, event, select
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, create_engine, event, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -67,6 +67,8 @@ class RunRecord(Base):
         Index("ix_runs_owner_created", "owner_user_id", "created_at"),
         Index("ix_runs_worker_created", "worker_id", "created_at"),
         Index("ix_runs_worker_status", "worker_id", "status"),
+        Index("uq_runs_one_active_per_worker", "worker_id", unique=True,
+              sqlite_where=text("status IN ('queued', 'running')")),
     )
 
 
@@ -99,7 +101,8 @@ class UserRepository:
             raise ValueError("RunGuard requires a local SQLite database URL")
         if self.database_url != "sqlite:///:memory:":
             Path(self.database_url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
-        self.engine = create_engine(self.database_url, connect_args={"check_same_thread": False})
+        self.engine = create_engine(self.database_url,
+                                    connect_args={"check_same_thread": False, "timeout": 30.0})
         @event.listens_for(self.engine, "connect")
         def _enable_foreign_keys(connection, _record):
             connection.execute("PRAGMA foreign_keys=ON")

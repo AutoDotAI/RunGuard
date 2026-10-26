@@ -11,7 +11,7 @@ export RUNGUARD_AUTH_SECRET="$(openssl rand -hex 32)"
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The default database is `backend/data/runguard.db`; startup applies Alembic migrations through `0002_app_data`. To migrate explicitly, run `cd backend && uv run alembic upgrade head`. To choose another local file, set `RUNGUARD_DATABASE_URL=sqlite:////absolute/path/runguard.db` before migration and API startup. Reuse the same database URL and signing secret after restart. Do not regenerate the secret for each launch.
+The default database is `backend/data/runguard.db`; startup applies Alembic migrations through `0003_active_run_index`. The partial SQLite index permits only one queued or running run per worker, and enqueue uses a short write transaction to enforce the per-user active-run limit across API instances. To migrate explicitly, run `cd backend && uv run alembic upgrade head`. To choose another local file, set `RUNGUARD_DATABASE_URL=sqlite:////absolute/path/runguard.db` before migration and API startup. Reuse the same database URL and signing secret after restart. Do not regenerate the secret for each launch.
 
 Register and use the returned `access_token` as `Authorization: Bearer <token>` on protected `/api/v1/*` routes:
 

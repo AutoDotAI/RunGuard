@@ -104,6 +104,8 @@ def test_openapi_has_exact_p0_operations_resolved_references_and_explicit_respon
     assert set(found) == set(OPERATIONS)
     assert "/api/v1/alerts" not in document["paths"]
     assert document["components"]["securitySchemes"]["localBearer"]["scheme"] == "bearer"
+    enqueue = found[("post", "/api/v1/workers/{worker_id}/runs")]
+    assert {"400", "401", "404", "409", "429"} <= set(enqueue["responses"])
     for key, (success, response_schema, request_schema) in OPERATIONS.items():
         operation = found[key]
         assert operation.get("operationId"), key
