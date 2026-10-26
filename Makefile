@@ -17,7 +17,7 @@ OBS_COMPOSE = $(DOCKER) compose -p "$$OBS_PROJECT" -f compose.yaml -f compose.ob
 STALL_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability
 RESPONDER_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability --profile responder
 
-.PHONY: help install install-backend install-frontend test test-backend test-frontend typecheck build build-frontend build-images check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry cd-check rollback-rehearsal
+.PHONY: help install install-backend install-frontend test test-backend test-frontend typecheck build build-frontend build-images check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke postgres-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry cd-check rollback-rehearsal
 
 help: ## List every Makefile target; no install or service start
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-24s %s\n", $$1, $$2}' Makefile
@@ -62,7 +62,7 @@ frontend: ## Start local Vite frontend in this terminal; configure frontend/.env
 
 compose-config: ## Validate local Compose configuration (.env with stable secret required)
 	$(DOCKER) compose config --quiet
-compose-up: ## Build/start local API, worker and web; retain SQLite volume
+compose-up: ## Build/start local API, worker, web and PostgreSQL; retain both volumes
 	$(DOCKER) compose up --build -d
 compose-status: ## Show local Compose service status
 	$(DOCKER) compose -p runguard -f compose.yaml -f compose.observability.yaml --profile observability ps --all
@@ -72,6 +72,8 @@ compose-down: ## Stop local Compose stack without deleting SQLite volume
 	$(DOCKER) compose -p runguard -f compose.yaml -f compose.observability.yaml --profile observability down
 compose-smoke: ## Run API-to-worker smoke (uses example.com outbound HTTPS)
 	$(PYTHON) scripts/compose_smoke.py
+postgres-smoke: ## Check isolated PostgreSQL health and restart persistence
+	$(PYTHON) scripts/postgres_compose_smoke.py
 
 observability-up: ## Add loopback Grafana/collector to the existing local app
 	$(OBS_COMPOSE) up --build -d

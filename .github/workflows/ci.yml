@@ -67,9 +67,14 @@ jobs:
           from pathlib import Path
           import secrets
 
-          Path('.env').write_text('RUNGUARD_AUTH_SECRET=' + secrets.token_hex(32) + '\n')
+          Path('.env').write_text(
+              'RUNGUARD_AUTH_SECRET=' + secrets.token_hex(32) + '\n'
+              'RUNGUARD_POSTGRES_PASSWORD=' + secrets.token_hex(32) + '\n'
+          )
           PY
           docker compose config --quiet
+      - name: Verify isolated PostgreSQL health and persistence
+        run: python3 scripts/postgres_compose_smoke.py
       - uses: astral-sh/setup-uv@v6
         with:
           version: '0.9.8'
