@@ -18,7 +18,8 @@
 > The URL Summarizer accepts an optional model/provider API key **on the
 > server**. A ChatGPT or agent subscription is not an application credential;
 > without a configured provider, summarizer runs fail visibly with
-> `LLM_ERROR`. The local responder and its demo action run offline.
+> `MODEL_PROVIDER_UNAVAILABLE`. The local responder and its demo action run
+> offline.
 
 > **Provider amendment — 2026-10-26 (requested, pending implementation):**
 > RunGuard's default model path should invoke the host's already-authenticated
@@ -383,6 +384,7 @@ Form validates required fields, displays inline validation errors, and handles A
 - Never invent citations: the result references only the URL actually fetched.
 - Do not expose LLM keys, system prompts containing secrets, or full source body in logs/telemetry.
 - On provider timeout/error, mark the run failed; **do not automatically switch models or retry**. Disable SDK-level automatic retries/fallbacks (for example, LiteLLM `num_retries=0` when supported by the installed version).
+- When no selected model provider is available, fail with `MODEL_PROVIDER_UNAVAILABLE` before invoking a CLI or API. Reserve `LLM_ERROR` for an attempted provider request that fails.
 
 **Accept:** A permitted readable HTML page produces a saved summary; an empty/non-HTML page fails clearly; an LLM exception produces a failed run with an error category and useful logs.
 
@@ -772,7 +774,7 @@ No database transaction remains open during HTTP or LLM calls. No second worker 
 
 5. Use `litellm.completion(model=LLM_MODEL, messages=[...], max_tokens=...)` through a tiny adapter `LLMClient`.
 6. Save the output, page title, model label, source URL, and whether text was truncated.
-7. On provider timeout/response failure, emit `LLM_ERROR`, mark failed; do not automatically retry or fallback.
+7. If no selected provider is available, emit `MODEL_PROVIDER_UNAVAILABLE` without a model request. On provider timeout/response failure after a request, emit `LLM_ERROR`, mark failed; do not automatically retry or fallback.
 
 Suggested model budget for demo: input ≤12k characters, output ≤500 tokens; set a hard job timeout of ~60 seconds including fetch and model request.
 
