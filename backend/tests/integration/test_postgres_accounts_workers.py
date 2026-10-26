@@ -90,3 +90,27 @@ def test_postgres_account_restart_ownership_and_archived_history(postgres_url):
     with TestClient(create_app(secret=SECRET, database_url=postgres_url)) as client:
         assert client.get(f"/api/v1/runs/{run_id}", headers=_auth(alice)).status_code == 200
         assert client.get("/api/v1/workers", headers=_auth(alice)).json()["items"] == []
+
+
+def test_postgres_worker_quota_is_owner_scoped(postgres_url):
+    with TestClient(create_app(secret=SECRET, database_url=postgres_url)) as client:
+        alice = _register(client, "alice@example.com")
+        bob = _register(client, "bob@example.com")
+        created_ids = []
+        for number in range(20):
+            response = client.post("/api/v1/workers", headers=_auth(alice), json={
+                "name": f"Check {number}", "kind": "website_monitor",
+                "url": "https://example.com/"})
+            assert response.status_code == 201, response.text
+            created_ids.append(response.json()["id"])
+        blocked = client.post("/api/v1/workers", headers=_auth(alice), json={
+            "name": "Check 21", "kind": "website_monitor", "url": "https://example.com/"})
+        assert blocked.status_code == 429
+        assert blocked.json()["error"]["code"] == "WORKER_LIMIT_REACHED"
+        assert client.post("/api/v1/workers", headers=_auth(bob), json={
+            "name": "Bob's check", "kind": "website_monitor",
+            "url": "https://example.com/"}).status_code == 201
+        assert client.delete(f"/api/v1/workers/{created_ids[0]}", headers=_auth(alice)).status_code == 204
+        assert client.post("/api/v1/workers", headers=_auth(alice), json={
+            "name": "Replacement", "kind": "website_monitor",
+            "url": "https://example.com/"}).status_code == 201
