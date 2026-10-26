@@ -22,7 +22,7 @@ local readiness template until external host/HTTPS/egress QA is complete.
 cd backend
 uv sync --extra test
 export RUNGUARD_AUTH_SECRET="$(openssl rand -hex 32)"
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
 In a second terminal, using the same `RUNGUARD_DATABASE_URL` as the API:

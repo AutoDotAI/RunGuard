@@ -1,0 +1,52 @@
+{
+  "uid": "runguard-journey",
+  "title": "RunGuard user journey",
+  "tags": ["runguard", "local"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {"from": "now-30m", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "title": "Failed user runs", "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum by (kind) (rate(runguard_runs_completed_total{status=\"failed\"}[5m]))", "legendFormat": "{{kind}} failures/s", "refId": "A"}]
+    },
+    {
+      "id": 2, "title": "Run completion rate", "type": "timeseries",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum by (kind, status) (rate(runguard_runs_completed_total[5m]))", "legendFormat": "{{kind}} {{status}}/s", "refId": "A"}]
+    },
+    {
+      "id": 3, "title": "Queue wait p95 (seconds)", "type": "timeseries",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, kind) (rate(runguard_queue_wait_seconds_bucket[5m])))", "legendFormat": "{{kind}} p95", "refId": "A"}]
+    },
+    {
+      "id": 4, "title": "Worker heartbeat age (seconds)", "type": "timeseries",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "runguard_worker_heartbeat_age_seconds", "legendFormat": "age", "refId": "A"}]
+    },
+    {
+      "id": 5, "title": "Queued runs", "type": "timeseries",
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum by (kind) (runguard_queue_depth)", "legendFormat": "{{kind}} queued", "refId": "A"}]
+    },
+    {
+      "id": 6, "title": "API journey outcomes", "type": "timeseries",
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum by (operation, outcome) (rate(runguard_api_outcomes_total[5m]))", "legendFormat": "{{operation}} {{outcome}}/s", "refId": "A"}]
+    },
+    {
+      "id": 7, "title": "Find a run in logs and traces", "type": "text", "mode": "markdown",
+      "gridPos": {"x": 0, "y": 24, "w": 24, "h": 4},
+      "options": {"mode": "markdown", "content": "Open **Explore → Loki** and filter a run ID from the app with `{service_name=\"runguard-worker\"} | run_id=\"RUN_ID\"`. Copy the `trace_id` from a result, then open **Explore → Tempo** and use Trace ID lookup. API errors include `request_id`; filter it in Loki with `{service_name=\"runguard-api\"} | request_id=\"REQUEST_ID\"`. Operator telemetry stays on localhost."}
+    }
+  ]
+}

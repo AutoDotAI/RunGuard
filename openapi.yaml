@@ -185,6 +185,8 @@ paths:
       responses:
         '202':
           description: Run queued
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
           content:
             application/json:
               schema:
@@ -293,6 +295,8 @@ paths:
       responses:
         '202':
           description: New run queued
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
           content:
             application/json:
               schema:
@@ -325,6 +329,10 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 components:
+  headers:
+    RequestId:
+      description: Correlates this response to a sanitized API operational log.
+      schema: { type: string, format: uuid }
   securitySchemes:
     localBearer:
       type: http
@@ -369,30 +377,40 @@ components:
   responses:
     BadRequest:
       description: Invalid query syntax
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
       description: Missing, invalid or expired backend-issued bearer token
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: Item absent or owned by another user
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Conflict:
       description: Invalid state, archived worker or existing active run
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     ValidationError:
       description: Invalid request fields or blocked URL
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
       content:
         application/json:
           schema:
@@ -403,12 +421,15 @@ components:
         Retry-After:
           description: Seconds until another request may be accepted for RATE_LIMITED responses
           schema: { type: integer, minimum: 1 }
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     InternalError:
       description: Unexpected server error with a sanitized message
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
       content:
         application/json:
           schema:

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from .db import RunLogRecord, RunRecord, UserRepository, WorkerRecord
 from .run_logs import new_run_log
+from . import observability
 from .models import (
     DashboardSummary, EnqueuedRun, Run, RunLog, RunLogPage, RunPage,
     Worker, WorkerCreate, WorkerPage, WorkerUpdate,
@@ -178,28 +179,31 @@ class PersistentStore:
                           {"run_id": existing.id})
         if active_count >= 10:
             raise Problem(429, "TOO_MANY_ACTIVE_RUNS", "At most 10 runs may be active")
-        timestamp = now()
-        run = RunRecord(id=str(uuid4()), worker_id=worker.id, owner_user_id=owner,
-                        worker_name_snapshot=name, kind=kind, url_snapshot=url,
-                        config_snapshot_json=config_snapshot_json, status="queued",
-                        created_at=timestamp, started_at=None, finished_at=None,
-                        duration_ms=None, http_status=None, result_json=None,
-                        error_code=None, error_message=None, retry_of_run_id=retry_of,
-                        trace_id=None, traceparent=None)
-        try:
-            session.add(run)
-            session.flush()  # Insert the parent before its foreign-keyed log entry.
-            session.add(new_run_log(run.id, owner, timestamp, "INFO", "RUN_QUEUED"))
-            session.commit()
-        except IntegrityError:
-            session.rollback()
-            existing = session.scalar(select(RunRecord).where(
-                RunRecord.worker_id == worker.id,
-                RunRecord.status.in_(("queued", "running"))).limit(1))
-            if existing:
-                raise Problem(409, "RUN_ALREADY_ACTIVE", "This worker already has an active run",
-                              {"run_id": existing.id}) from None
-            raise
+        with observability.tracer().start_as_current_span("db.enqueue"):
+            timestamp = now()
+            run = RunRecord(id=str(uuid4()), worker_id=worker.id, owner_user_id=owner,
+                            worker_name_snapshot=name, kind=kind, url_snapshot=url,
+                            config_snapshot_json=config_snapshot_json, status="queued",
+                            created_at=timestamp, started_at=None, finished_at=None,
+                            duration_ms=None, http_status=None, result_json=None,
+                            error_code=None, error_message=None, retry_of_run_id=retry_of,
+                            trace_id=observability.trace_id(), traceparent=observability.traceparent())
+            try:
+                session.add(run)
+                session.flush()  # Insert the parent before its foreign-keyed log entry.
+                session.add(new_run_log(run.id, owner, timestamp, "INFO", "RUN_QUEUED"))
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                existing = session.scalar(select(RunRecord).where(
+                    RunRecord.worker_id == worker.id,
+                    RunRecord.status.in_(("queued", "running"))).limit(1))
+                if existing:
+                    raise Problem(409, "RUN_ALREADY_ACTIVE", "This worker already has an active run",
+                                  {"run_id": existing.id}) from None
+                raise
+            observability.record_enqueue(kind)
+            observability.emit("RUN_QUEUED", run_id=run.id)
         return EnqueuedRun(run_id=run.id, worker_id=worker.id,
                            status="queued", created_at=timestamp)
 

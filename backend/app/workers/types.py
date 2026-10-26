@@ -10,6 +10,7 @@ class RunSnapshot:
     kind: str
     url: str
     config_json: str
+    traceparent: str | None = None
 
     @property
     def config(self) -> dict:

@@ -3,6 +3,7 @@
 import argparse
 import fcntl
 import json
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,7 @@ from app.models import MonitorResult, SummarizerResult
 from app.outbound import allowed_public_hosts
 from app.run_logs import new_run_log, safe_event
 from app.store import now
+from app import observability
 from .types import HandlerOutcome, RunSnapshot
 from .website_monitor import monitor
 from .url_summarizer import summarize
@@ -62,6 +64,9 @@ class WorkerRunner:
             raise WorkerAlreadyRunning("Another worker owns this SQLite queue") from None
         try:
             self.db.migrate()
+            observability.configure("runguard-worker", self.db.database_url)
+            self._touch_heartbeat()
+            observability.emit("WORKER_STARTED", service="runguard-worker")
             self.reconcile_interrupted()
         except BaseException:
             self.__exit__(None, None, None)
@@ -78,6 +83,10 @@ class WorkerRunner:
     def _require_lock(self) -> None:
         if self._lock_file is None:
             raise RuntimeError("WorkerRunner must be entered before processing")
+
+    def _touch_heartbeat(self) -> None:
+        self._require_lock()
+        os.utime(self.lock_path, None)
 
     @staticmethod
     def _log(session, run: RunRecord, timestamp: str, level: str,
@@ -101,10 +110,18 @@ class WorkerRunner:
                           "Worker stopped before the run completed")
                 self._log(session, run, finished, "ERROR", "RUN_FAILED", "Run failed")
             session.commit()
+            for run in runs:
+                observability.record_completion(run.kind, "failed", (run.duration_ms or 0) / 1000)
+                observability.emit("WORKER_INTERRUPTED", run_id=run.id,
+                                   trace_id_value=run.trace_id, level="ERROR",
+                                   service="runguard-worker")
+            if runs:
+                observability.emit("WORKER_RECONCILED", service="runguard-worker")
             return len(runs)
 
     def claim_oldest(self) -> RunSnapshot | None:
         self._require_lock()
+        self._touch_heartbeat()
         with self.db.sessions() as session:
             session.execute(text("BEGIN IMMEDIATE"))
             # A write lock protects both the select and state change from other writers.
@@ -113,18 +130,25 @@ class WorkerRunner:
             if run is None:
                 session.commit()
                 return None
-            timestamp = now()
-            run.status = "running"
-            run.started_at = timestamp
-            self._log(session, run, timestamp, "INFO", "RUN_CLAIMED", "Run claimed by worker")
-            self._log(session, run, timestamp, "INFO", "RUN_STARTED", "Run started")
-            snapshot = RunSnapshot(run.id, run.kind, run.url_snapshot, run.config_snapshot_json)
-            session.commit()
+            with observability.tracer().start_as_current_span(
+                    "worker.claim", context=observability.parent_context(run.traceparent)):
+                timestamp = now()
+                run.status = "running"
+                run.started_at = timestamp
+                self._log(session, run, timestamp, "INFO", "RUN_CLAIMED", "Run claimed by worker")
+                self._log(session, run, timestamp, "INFO", "RUN_STARTED", "Run started")
+                snapshot = RunSnapshot(run.id, run.kind, run.url_snapshot, run.config_snapshot_json,
+                                       run.traceparent)
+                session.commit()
+                queued = datetime.fromisoformat(run.created_at.replace("Z", "+00:00"))
+                started = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                observability.record_start(run.kind, (started - queued).total_seconds())
+                observability.emit("RUN_CLAIMED", run_id=run.id, service="runguard-worker")
             return snapshot
 
     def _finish(self, run_id: str, outcome: HandlerOutcome | None,
                 error_code: str | None = None, error_message: str | None = None) -> bool:
-        with self.db.sessions() as session:
+        with observability.tracer().start_as_current_span("db.result"), self.db.sessions() as session:
             session.execute(text("BEGIN IMMEDIATE"))
             run = session.get(RunRecord, run_id)
             if run is None or run.status != "running":
@@ -147,6 +171,10 @@ class WorkerRunner:
                 self._log(session, run, finished, "ERROR", run.error_code, run.error_message)
                 self._log(session, run, finished, "ERROR", "RUN_FAILED", "Run failed")
             session.commit()
+            observability.record_completion(run.kind, run.status, (run.duration_ms or 0) / 1000)
+            observability.emit("RUN_SUCCEEDED" if run.status == "succeeded" else "RUN_FAILED",
+                               run_id=run.id, level="INFO" if run.status == "succeeded" else "ERROR",
+                               service="runguard-worker")
             return True
 
     def _monitor_step(self, run_id: str, event: str, message: str,
@@ -156,16 +184,24 @@ class WorkerRunner:
             if run is not None and run.status == "running":
                 self._log(session, run, now(), level, event, message)
                 session.commit()
+                observability.emit(event, run_id=run_id, level=level,
+                                   service="runguard-worker")
 
     def run_once(self) -> bool:
         snapshot = self.claim_oldest()
         if snapshot is None:
             return False
+        with observability.tracer().start_as_current_span(
+                "worker.execute", context=observability.parent_context(snapshot.traceparent)):
+            self._execute_claimed(snapshot)
+        return True
+
+    def _execute_claimed(self, snapshot: RunSnapshot) -> None:
         handler = self.handlers.get(snapshot.kind)
         if handler is None:
             self._finish(snapshot.id, None, "HANDLER_UNAVAILABLE",
                          "No handler is available for this worker type")
-            return True
+            return
         if snapshot.kind == "website_monitor":
             self._monitor_step(snapshot.id, "URL_VALIDATION_STARTED", "")
             self._monitor_step(snapshot.id, "HTTP_REQUEST_STARTED", "Checking configured website")
@@ -195,7 +231,6 @@ class WorkerRunner:
                 else:
                     self._monitor_step(snapshot.id, "HTTP_REQUEST_FAILED", "Website check failed", "ERROR")
             self._finish(snapshot.id, outcome, outcome.error_code, outcome.error_message)
-        return True
 
     def poll(self, interval_seconds: float = 1.0) -> None:
         while True:

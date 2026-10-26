@@ -6,6 +6,7 @@ from html.parser import HTMLParser
 from typing import Callable
 
 from app import outbound
+from app import observability
 
 from .llm import LLMClient, LiteLLMClient
 from .types import HandlerOutcome, RunSnapshot
@@ -75,7 +76,8 @@ def summarize(snapshot: RunSnapshot, *,
     emit("URL_VALIDATION_STARTED", "Validating configured URL", "INFO")
     emit("HTTP_REQUEST_STARTED", "Fetching HTML page", "INFO")
     try:
-        response = (fetch or outbound.fetch)(snapshot.url)
+        with observability.tracer().start_as_current_span("http.fetch"):
+            response = (fetch or outbound.fetch)(snapshot.url)
     except outbound.OutboundError as error:
         emit("HTTP_REQUEST_FAILED", "Page fetch failed", "ERROR")
         return HandlerOutcome(None, error_code=error.code, error_message=error.message)
@@ -142,9 +144,10 @@ def summarize(snapshot: RunSnapshot, *,
                               error_code="LLM_ERROR", error_message="Summarization provider unavailable")
     emit("LLM_REQUEST_STARTED", f"Requesting summary with {PROMPT_VERSION}", "INFO")
     try:
-        summary = (llm or LiteLLMClient()).complete(
-            model=selected_model, system=SYSTEM_PROMPT,
-            user=f"Webpage evidence ({PROMPT_VERSION}):\n{page_text}")
+        with observability.tracer().start_as_current_span("llm.summarize"):
+            summary = (llm or LiteLLMClient()).complete(
+                model=selected_model, system=SYSTEM_PROMPT,
+                user=f"Webpage evidence ({PROMPT_VERSION}):\n{page_text}")
         if not isinstance(summary, str) or not summary.strip():
             raise ValueError("Empty model response")
     except Exception:

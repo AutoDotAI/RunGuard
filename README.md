@@ -2,6 +2,8 @@
 
 Deployment backup, manual rollback, and local rehearsal commands are in
 [docs/deployment.md](docs/deployment.md).
+Local metrics, logs, traces, and an offline API-to-worker smoke are in
+[docs/observability.md](docs/observability.md).
 
 RunGuard is being built in [public issues](https://github.com/AutoDotAI/RunGuard/issues).
 This checkout contains a FastAPI backend with SQLite-backed local accounts,
@@ -48,7 +50,7 @@ Launch the local API from `backend/`:
 
 ```bash
 export RUNGUARD_AUTH_SECRET="$(openssl rand -hex 32)"
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
 In another terminal, start the queue worker from `backend/` with the same

@@ -35,6 +35,9 @@ export function Dashboard() {
     refetchInterval: (query) => (query.state.data?.recent_runs.some((r) => isActive(r.status)) ? 2500 : false),
   });
   const d = q.error ? undefined : q.data;
+  const longestQueueSeconds = d?.recent_runs
+    .filter((run) => run.status === "queued")
+    .reduce((longest, run) => Math.max(longest, Math.floor((Date.now() - new Date(run.created_at).getTime()) / 1000)), 0) ?? 0;
   return (
     <>
       <PageHeader
@@ -53,6 +56,11 @@ export function Dashboard() {
       {d && d.failed > 0 && (
         <div role="status" className="mb-6 flex items-center gap-2 rounded-md border border-destructive/30 bg-danger-soft px-4 py-3 text-sm text-destructive">
           <AlertTriangle className="size-4" /> {d.failed} failed run{d.failed > 1 ? "s" : ""} in the last 24 hours. Open a failed run to inspect logs and retry.
+        </div>
+      )}
+      {longestQueueSeconds >= 30 && (
+        <div role="status" className="mb-6 rounded-md border border-amber-500/30 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          A run has been queued for {longestQueueSeconds} seconds. The worker may be stopped; check its status if the wait continues.
         </div>
       )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">

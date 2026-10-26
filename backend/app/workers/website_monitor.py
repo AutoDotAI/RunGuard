@@ -4,6 +4,7 @@ import time
 from typing import Callable
 
 from app import outbound
+from app import observability
 
 from .types import HandlerOutcome, RunSnapshot
 
@@ -12,7 +13,8 @@ def monitor(snapshot: RunSnapshot, fetch: Callable[[str], outbound.FetchResponse
             ) -> HandlerOutcome:
     started = time.monotonic()
     try:
-        response = (fetch or outbound.fetch)(snapshot.url)
+        with observability.tracer().start_as_current_span("http.fetch"):
+            response = (fetch or outbound.fetch)(snapshot.url)
     except outbound.OutboundError as error:
         return HandlerOutcome(None, error_code=error.code, error_message=error.message)
 

@@ -32,7 +32,7 @@ services:
       RUNGUARD_AUTH_SECRET: ${RUNGUARD_AUTH_SECRET:?Set a stable, unique secret of at least 32 bytes}
       RUNGUARD_CORS_ORIGINS: https://${RUNGUARD_PUBLIC_HOST:?Set your controlled HTTPS hostname}
       RUNGUARD_SUMMARIZER_AVAILABLE: ${RUNGUARD_SUMMARIZER_AVAILABLE:-false}
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*", "--no-access-log"]
     depends_on:
       migrate:
         condition: service_completed_successfully

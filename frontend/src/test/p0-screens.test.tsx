@@ -109,6 +109,18 @@ describe("P0 screens with the typed API adapter", () => {
     );
   });
 
+  it("makes a delayed queued run visible on the dashboard", async () => {
+    mocks.getDashboardSummary.mockResolvedValueOnce({
+      window: "24h", total: 1, succeeded: 0, failed: 0,
+      success_rate: null, avg_duration_ms: null,
+      recent_runs: [{ ...failedRun, status: "queued",
+        created_at: new Date(Date.now() - 65_000).toISOString(),
+        started_at: null, finished_at: null, duration_ms: null, result: null, error: null }],
+    } satisfies DashboardSummary);
+    mount(<Dashboard />);
+    expect(await screen.findByText(/A run has been queued for/)).toHaveTextContent("worker may be stopped");
+  });
+
   it("shows dashboard loading and a request error without displaying counts", async () => {
     mocks.getDashboardSummary.mockReturnValueOnce(new Promise(() => {}));
     const view = mount(<Dashboard />);

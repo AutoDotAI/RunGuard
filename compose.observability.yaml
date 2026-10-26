@@ -1,0 +1,43 @@
+# Local-only operator telemetry. Include this file with compose.yaml and enable
+# --profile observability; no telemetry receiver is published to the host.
+services:
+  collector:
+    image: otel/opentelemetry-collector:0.162.0
+    profiles: [observability]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/collector.yaml:/etc/otelcol/config.yaml:ro
+    depends_on:
+      - observability
+    restart: unless-stopped
+
+  observability:
+    image: grafana/otel-lgtm:0.30.0
+    profiles: [observability]
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - runguard_telemetry:/data
+      - ./observability/dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards/custom:ro
+      - ./observability/provisioning.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/custom.yaml:ro
+    environment:
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/custom/runguard.json
+      GF_SECURITY_ADMIN_PASSWORD: ${RUNGUARD_GRAFANA_PASSWORD:-admin}
+    restart: unless-stopped
+
+  api:
+    environment:
+      RUNGUARD_OTEL_ENDPOINT: http://collector:4318
+    depends_on:
+      collector:
+        condition: service_started
+
+  worker:
+    environment:
+      RUNGUARD_OTEL_ENDPOINT: http://collector:4318
+    depends_on:
+      collector:
+        condition: service_started
+
+volumes:
+  runguard_telemetry:
