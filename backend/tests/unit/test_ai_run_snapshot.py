@@ -124,12 +124,28 @@ def test_invalid_selected_route_does_not_fall_back_to_environment(monkeypatch):
     ("claude", "RUNGUARD_CLAUDE_MODELS", "claude-sonnet-4-5"),
 ])
 def test_host_cli_uses_only_configured_model_argument(monkeypatch, provider, env, model):
+    from app.workers import host_model
+
     monkeypatch.setenv(env, model)
     client = HostCLIClient(provider)
-    command = client._command("/tmp/model-workdir", model)
+    commands = []
+
+    class FakeProcess:
+        returncode = 0
+
+    def fake_popen(command, **_kwargs):
+        commands.append(command)
+        return FakeProcess()
+
+    monkeypatch.setattr(host_model.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(host_model, "_read_bounded", lambda _process:
+                        b"# Article\n- Fact one.\n- Fact two.\n- Fact three.")
+    client.complete(model=model, system="summarize", user="safe article evidence")
+    command = commands[0]
     assert command.count("--model") == 1
     assert command[command.index("--model") + 1] == model
-    assert "--model" not in client._command("/tmp/model-workdir", "default")
+    client.complete(model="default", system="summarize", user="safe article evidence")
+    assert "--model" not in commands[1]
     with pytest.raises(ValueError, match="allowlisted"):
         client._command("/tmp/model-workdir", "unapproved-model")
     with pytest.raises(ValueError, match="allowlisted"):
