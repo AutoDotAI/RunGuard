@@ -38,6 +38,11 @@ def test_save_and_execution_use_same_exact_host_policy(monkeypatch):
     with pytest.raises(OutboundError) as rebound:
         fetch("https://example.com/", resolver=lambda _: ["169.254.169.254"])
     assert rebound.value.code == "DESTINATION_BLOCKED"
+    for reserved in ("192.88.99.1", "233.1.1.1",
+                     "::ffff:192.88.99.1", "::ffff:233.1.1.1"):
+        with pytest.raises(OutboundError) as blocked:
+            fetch("https://example.com/", resolver=lambda _, address=reserved: [address])
+        assert blocked.value.code == "DESTINATION_BLOCKED"
 
 
 def test_public_startup_requires_allowlist_and_rate_limits_are_observable(tmp_path, monkeypatch):

@@ -24,6 +24,7 @@ FETCH_TIMEOUT_SECONDS = 10.0
 _LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _DNS_SLOT = threading.BoundedSemaphore(1)
 _HTTP_SLOT = threading.BoundedSemaphore(1)
+_DEPRECATED_6TO4_RELAY = ipaddress.ip_network("192.88.99.0/24")
 
 
 class OutboundError(Exception):
@@ -135,9 +136,12 @@ def _public_addresses(hostname: str, resolver: Callable[[str], Sequence[str]]) -
             address = ipaddress.ip_address(answer)
         except (TypeError, ValueError):
             raise OutboundError("DNS_ERROR", "Destination resolution failed") from None
-        if not address.is_global or (isinstance(address, ipaddress.IPv6Address)
-                                     and address.ipv4_mapped is not None
-                                     and not address.ipv4_mapped.is_global):
+        if (not address.is_global or address.is_multicast or
+                (isinstance(address, ipaddress.IPv4Address) and address in _DEPRECATED_6TO4_RELAY) or
+                (isinstance(address, ipaddress.IPv6Address)
+                 and address.ipv4_mapped is not None
+                 and (not address.ipv4_mapped.is_global or address.ipv4_mapped.is_multicast
+                      or address.ipv4_mapped in _DEPRECATED_6TO4_RELAY))):
             raise OutboundError("DESTINATION_BLOCKED", "Destination address is not public")
         validated.append(str(address))
     return validated
