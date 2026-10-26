@@ -153,6 +153,7 @@ describe("P0 screens with the typed API adapter", () => {
   it("shows worker loading and an active row whose Run action is disabled", async () => {
     mocks.listWorkers.mockReturnValueOnce(new Promise(() => {}));
     const view = mount(<Workers />);
+    expect(screen.getByRole("status", { name: "Loading workers" })).toBeVisible();
     expect(screen.queryByText("No workers yet.")).not.toBeInTheDocument();
     view.unmount();
 
@@ -264,6 +265,12 @@ describe("P0 screens with the typed API adapter", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
     const events = screen.getAllByText(/RUN_(STARTED|SUCCEEDED)/).map((node) => node.textContent);
     expect(events).toEqual(["RUN_STARTED", "RUN_SUCCEEDED"]);
+    const logRows = screen.getAllByRole("listitem");
+    expect(logRows).toHaveLength(2);
+    expect(logRows[0]).toHaveTextContent("2026-01-01T00:00:00Z");
+    expect(logRows[0]).toHaveTextContent("RUN_STARTED");
+    expect(logRows[1]).toHaveTextContent("2026-01-01T00:00:01Z");
+    expect(logRows[1]).toHaveTextContent("RUN_SUCCEEDED");
   });
 
   it("shows a summarizer output", async () => {

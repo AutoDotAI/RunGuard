@@ -63,7 +63,7 @@ export function Workers() {
     <>
       <PageHeader title="Workers" sub={data ? `${data.total} of 20 saved` : undefined} actions={<Button asChild><Link to="/workers/new"><Plus /> New worker</Link></Button>} />
       {q.error && <ErrorState error={q.error} />}
-      {q.isLoading && <div className="h-40 animate-pulse rounded-md bg-muted" />}
+      {q.isLoading && <div role="status" aria-label="Loading workers" className="h-40 animate-pulse rounded-md bg-muted" />}
       {data && data.items.length === 0 && (
         <div className="rounded-md border border-dashed p-12 text-center">
           <p className="text-sm text-muted-foreground">No workers yet.</p>
