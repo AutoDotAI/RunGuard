@@ -1,6 +1,9 @@
 """Durability and schema checks for worker, run, and log storage."""
 
+import os
 import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -30,6 +33,21 @@ def register(client, email: str):
         "email": email, "password": "CorrectHorse123!"})
     assert response.status_code == 201, response.text
     return response.json()["access_token"]
+
+
+def test_documented_alembic_console_command_imports_app_from_backend(tmp_path):
+    """A console entry point must work without pytest's pythonpath setting."""
+    backend = Path(__file__).resolve().parents[1]
+    database = tmp_path / "cli.db"
+    environment = os.environ.copy()
+    environment["RUNGUARD_DATABASE_URL"] = f"sqlite:///{database}"
+    result = subprocess.run(
+        [str(Path(sys.executable).with_name("alembic")), "upgrade", "head"],
+        cwd=backend, env=environment, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0002_app_data"
 
 
 def test_upgrade_from_users_preserves_account_and_adds_required_schema(tmp_path):
