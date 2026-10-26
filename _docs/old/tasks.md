@@ -162,7 +162,7 @@ Description: Convert raw `sqlite3` and `BEGIN IMMEDIATE` use in alerting, demo c
 
 ## 43. Preserve database access and URL egress isolation
 Goal: Let the local worker reach PostgreSQL without allowing arbitrary private URL fetches.
-Description: Update local worker networking and, if retained, `deploy/egress/firewall.sh` so only the PostgreSQL service on TCP 5432 is allowed through a private-network deny rule; host CLI workers use the loopback-bound port with the same database credentials. Probe allowed database access plus rejected RFC1918, metadata, and redirect destinations, and verify no CLI login material enters containers.
+Description: Wire container workers to the Compose PostgreSQL service and host CLI workers to its loopback-bound port; keep URL fetching's existing SSRF restrictions independent of database connectivity. Probe a successful database connection plus rejected RFC1918, metadata, and redirect destinations, and verify no CLI login material enters containers; no production firewall or deployment work is in this local task.
 
 ## 44. Import existing SQLite data once
 Goal: Move local accounts and run history into PostgreSQL without data loss.
@@ -194,7 +194,7 @@ Description: Document and test a consistent pre-cutover SQLite backup, the impor
 
 ## 51. Consolidate local Compose and retire deployment files
 Goal: Give the owner one normal local launch and one optional observability launch.
-Description: Move required local services from `compose.host-ai.yaml`, `compose.responder.yaml`, and other overrides into `compose.yaml` or `compose.observability.yaml`, then remove unused demo, CD, production, and rollback-rehearsal Compose files and deployment-only scripts/workflows. Check all Makefile/README references, run `docker compose config` and a local smoke journey, and retain the SQLite backup plus useful migration/security commands.
+Description: Review the four current files—`compose.yaml`, `compose.observability.yaml`, `compose.host-ai.yaml`, and `compose.prod.yaml`—and move any needed local services from the last two into the first two before retiring the unused overrides and deployment-only scripts/workflows. Check Makefile/README references, run `docker compose config` and a local smoke journey, and retain the SQLite backup plus useful migration/security commands; the demo, CD, responder, and rollback-rehearsal overrides were already removed.
 
 ## 52. Update CI and exact local commands
 Goal: Verify the PostgreSQL-based project automatically and make it runnable from a clean checkout.
