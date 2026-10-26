@@ -21,6 +21,48 @@ The Grafana development image uses `admin` / `admin` by default; change
 The UI binds only to `127.0.0.1`; the OTLP collector and backend receiver have
 no published host ports. The public Caddy profile has no route to them.
 
+## User-impact alerts
+
+The API evaluates owned SQLite run state every 10 seconds, even with no browser
+open and the worker stopped. Two distinct failed runs in a rolling five-minute
+UTC window open a `repeated_run_failure` alert. A queued run older than 60
+seconds opens a `worker_queue_stalled` alert only when the worker heartbeat is
+older than 15 seconds or absent. The exact five-minute and 60-second boundaries
+are tested. A later successful run clears that account's repeated-failure
+condition; a stalled alert clears when its run is claimed or leaves the queue.
+Resolved records remain visible under **Resolved alerts** on the dashboard.
+The alert links to the owned run's timestamped logs and shows its trace ID.
+Normal 4xx/5xx responses from a configured monitor target count as job failures,
+while the stalled alert identifies worker health. They are not labelled a
+RunGuard platform outage.
+
+The API exports `runguard_alerts_open{kind}` with only two fixed kind values.
+It sends one aggregate firing or resolved state per kind to the local
+Alertmanager, which groups and repeats notifications. Alertmanager's UI is
+at <http://127.0.0.1:9093>; the local delivery inbox is at
+<http://127.0.0.1:9094>. Only fixed alert kind, severity, service and status
+reach the inbox. User IDs, emails, URLs, run IDs, tokens and page contents are
+absent from metric labels and operator notifications. Both ports bind to
+loopback; do not expose them publicly.
+
+To see an alert and its recovery without live HTTP or model calls, use a
+dedicated local Compose project with no other queued jobs. Start the
+observability profile above, sign up through the app, then run:
+
+```bash
+docker compose -p rg-observe-demo -f compose.yaml -f compose.observability.yaml --profile observability stop worker
+docker compose -p rg-observe-demo -f compose.yaml -f compose.observability.yaml --profile observability run --rm --no-deps -it worker python -m app.smoke_alerts
+docker compose -p rg-observe-demo -f compose.yaml -f compose.observability.yaml --profile observability start worker
+```
+
+Enter the existing account email and password at the prompts; the password is
+never printed. The script refuses to run while other jobs are queued or
+running. It creates two fake 503 monitor failures, pauses so the app and inbox
+can be inspected, then creates one fake success and resolves the alert. It
+only writes to the chosen local account and SQLite volume. Do not use this
+interactive smoke against a shared or public deployment. Alertmanager groups
+notifications, so the resolved inbox entry may take about 30 seconds to appear.
+
 The dashboard leads with failed runs, completion rate, queue wait, and worker
 heartbeat age. API operation outcomes and queue depth are below those panels.
 The API exports `runguard_runs_enqueued_total{kind}`; the worker exports

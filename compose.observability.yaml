@@ -25,16 +25,42 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${RUNGUARD_GRAFANA_PASSWORD:-admin}
     restart: unless-stopped
 
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    profiles: [observability]
+    command: ["--config.file=/etc/alertmanager/alertmanager.yaml", "--storage.path=/alertmanager"]
+    volumes:
+      - ./observability/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro
+    ports:
+      - "127.0.0.1:9093:9093"
+    restart: unless-stopped
+
+  operator-inbox:
+    image: runguard-api:local
+    profiles: [observability]
+    command: ["python", "-m", "app.operator_inbox"]
+    volumes:
+      - runguard_data:/data
+    environment:
+      RUNGUARD_OPERATOR_INBOX_PATH: /data/operator-alerts.jsonl
+    ports:
+      - "127.0.0.1:9094:9094"
+    restart: unless-stopped
+
   api:
     environment:
       RUNGUARD_OTEL_ENDPOINT: http://collector:4318
+      RUNGUARD_ALERTMANAGER_URL: http://alertmanager:9093
     depends_on:
       collector:
+        condition: service_started
+      alertmanager:
         condition: service_started
 
   worker:
     environment:
       RUNGUARD_OTEL_ENDPOINT: http://collector:4318
+      RUNGUARD_ALERTMANAGER_URL: http://alertmanager:9093
     depends_on:
       collector:
         condition: service_started

@@ -102,6 +102,22 @@ def _heartbeat_age(_options):
     return [Observation(age)]
 
 
+def _open_alerts(options):
+    path = _db_path(_runtime["database_url"] if _runtime else None)
+    if path is None or not path.exists():
+        return []
+    try:
+        with sqlite3.connect(path, timeout=min(options.timeout_millis / 1000, 1)) as connection:
+            rows = connection.execute(
+                "SELECT kind, COUNT(*) FROM alerts WHERE status = 'open' GROUP BY kind"
+            ).fetchall()
+    except (sqlite3.Error, OSError):
+        return []
+    counts = dict(rows)
+    return [Observation(counts.get(kind, 0), {"kind": kind})
+            for kind in ("repeated_run_failure", "worker_queue_stalled")]
+
+
 def _service_resource(service: str) -> Resource:
     # API and worker each have one process on the shared SQLite host. Keep
     # Prometheus resource labels stable when either process restarts.
@@ -157,6 +173,8 @@ def configure(service: str, database_url: str | None = None) -> None:
                 "runguard_worker_heartbeat_age_seconds", callbacks=[_heartbeat_age], unit="s")
             _runtime["queue_depth_gauge"] = meter.create_observable_gauge(
                 "runguard_queue_depth", callbacks=[_queue_depth])
+            _runtime["open_alerts_gauge"] = meter.create_observable_gauge(
+                "runguard_alerts_open", callbacks=[_open_alerts])
 
 
 def emit(event: str, *, run_id: str | None = None, trace_id_value: str | None = None,

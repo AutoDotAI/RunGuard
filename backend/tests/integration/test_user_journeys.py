@@ -36,7 +36,7 @@ def database_url(tmp_path):
 def client(database_url):
     with TestClient(create_app(secret=SECRET, database_url=database_url)) as client:
         with sqlite3.connect(database_url.removeprefix("sqlite:///")) as connection:
-            assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0003_active_run_index"
+            assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0004_alerts"
         yield client
 
 

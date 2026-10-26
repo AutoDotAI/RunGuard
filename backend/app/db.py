@@ -89,6 +89,28 @@ class RunLogRecord(Base):
     )
 
 
+class AlertRecord(Base):
+    __tablename__ = "alerts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(80), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id"), nullable=False)
+    symptom: Mapped[str] = mapped_column(String(256), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(35), nullable=False)
+    resolved_at: Mapped[str | None] = mapped_column(String(35), nullable=True)
+
+    __table_args__ = (
+        Index("ix_alerts_owner_created", "owner_user_id", "created_at"),
+        Index("uq_alerts_open_fingerprint", "fingerprint", unique=True,
+              sqlite_where=text("status = 'open'")),
+    )
+
+
 def default_database_url() -> str:
     path = Path(__file__).resolve().parents[1] / "data" / "runguard.db"
     return f"sqlite:///{path}"

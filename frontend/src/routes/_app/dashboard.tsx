@@ -4,6 +4,7 @@ import { AlertTriangle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ErrorState, PageHeader, fmtDuration, isActive } from "@/components/app/bits";
 import { RunsTable } from "@/components/app/RunsTable";
+import { AlertsPanel } from "@/components/app/AlertsPanel";
 import { api } from "@/lib/api/client";
 
 export const Route = createFileRoute("/_app/dashboard")({
@@ -29,6 +30,7 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
 }
 
 export function Dashboard() {
+  const alerts = useQuery({ queryKey: ["alerts"], queryFn: () => api.getAlerts(), refetchInterval: 10000 });
   const q = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => api.getDashboardSummary(),
@@ -50,6 +52,7 @@ export function Dashboard() {
           </>
         }
       />
+      <AlertsPanel data={alerts.data} loading={alerts.isPending} error={alerts.error} />
       {q.error && <ErrorState error={q.error} />}
       {(q.isPending && !q.error) && <p role="status" className="mb-4 text-sm text-muted-foreground">Loading dashboard…</p>}
       {!q.error && <>

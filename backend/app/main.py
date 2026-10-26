@@ -11,11 +11,13 @@ from sqlalchemy import text
 from .auth import TokenService
 from .db import UserRepository
 from .models import Health
-from .routers import auth, dashboard, runs, workers
+from .routers import auth, dashboard, runs, workers, alerts
 from .store import PersistentStore, Problem
 from .rate_limit import RateLimiter, RateLimited
 from .outbound import allowed_public_hosts
 from . import observability
+from .alerting import AlertLoop, AlertService
+from .operator_alerts import OperatorPublisher
 
 
 def error_response(status: int, code: str, message: str, details: dict | None = None):
@@ -37,14 +39,22 @@ def create_app(store: PersistentStore | None = None, secret: str | None = None,
             app.state.tokens = TokenService(secret)
         users.migrate()
         observability.configure("runguard-api", users.database_url)
+        interval = float(os.environ.get("RUNGUARD_ALERT_INTERVAL_SECONDS", "10"))
+        publisher = (OperatorPublisher(os.environ["RUNGUARD_ALERTMANAGER_URL"])
+                     if os.environ.get("RUNGUARD_ALERTMANAGER_URL") else None)
+        alert_loop = AlertLoop(app.state.alerts, interval, publisher)
+        if interval > 0:
+            alert_loop.start()
         try:
             yield
         finally:
+            alert_loop.stop()
             users.close()
 
     app = FastAPI(title="RunGuard API", version="1.0.0", lifespan=lifespan)
     app.state.users = users
     app.state.store = store if store is not None else PersistentStore(users)
+    app.state.alerts = AlertService(users)
     app.state.rate_limiter = RateLimiter()
     # Keep module import side-effect free; uvicorn validates the configured secret at startup.
     app.state.tokens = TokenService(secret) if secret is not None else None
@@ -121,6 +131,7 @@ def create_app(store: PersistentStore | None = None, secret: str | None = None,
     app.include_router(workers.router)
     app.include_router(runs.router)
     app.include_router(dashboard.router)
+    app.include_router(alerts.router)
     return app
 
 

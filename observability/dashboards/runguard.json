@@ -44,8 +44,14 @@
       "targets": [{"expr": "sum by (operation, outcome) (rate(runguard_api_outcomes_total[5m]))", "legendFormat": "{{operation}} {{outcome}}/s", "refId": "A"}]
     },
     {
-      "id": 7, "title": "Find a run in logs and traces", "type": "text", "mode": "markdown",
-      "gridPos": {"x": 0, "y": 24, "w": 24, "h": 4},
+      "id": 7, "title": "Open user-impact alerts", "type": "timeseries",
+      "gridPos": {"x": 0, "y": 24, "w": 24, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum by (kind) (runguard_alerts_open)", "legendFormat": "{{kind}}", "refId": "A"}]
+    },
+    {
+      "id": 8, "title": "Find a run in logs and traces", "type": "text", "mode": "markdown",
+      "gridPos": {"x": 0, "y": 32, "w": 24, "h": 4},
       "options": {"mode": "markdown", "content": "Open **Explore → Loki** and filter a run ID from the app with `{service_name=\"runguard-worker\"} | run_id=\"RUN_ID\"`. Copy the `trace_id` from a result, then open **Explore → Tempo** and use Trace ID lookup. API errors include `request_id`; filter it in Loki with `{service_name=\"runguard-api\"} | request_id=\"REQUEST_ID\"`. Operator telemetry stays on localhost."}
     }
   ]

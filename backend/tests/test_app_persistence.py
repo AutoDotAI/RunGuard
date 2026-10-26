@@ -47,7 +47,7 @@ def test_documented_alembic_console_command_imports_app_from_backend(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     with sqlite3.connect(database) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0003_active_run_index"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0004_alerts"
 
 
 def test_upgrade_from_users_preserves_account_and_adds_required_schema(tmp_path):
@@ -62,9 +62,9 @@ def test_upgrade_from_users_preserves_account_and_adds_required_schema(tmp_path)
 
     with sqlite3.connect(path) as connection:
         assert connection.execute("SELECT email FROM users WHERE id='user-one'").fetchone()[0] == "owner@example.com"
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0003_active_run_index"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0004_alerts"
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert {"users", "workers", "runs", "run_logs"} <= tables
+        assert {"users", "workers", "runs", "run_logs", "alerts"} <= tables
         for table, expected in {
             "workers": {"id", "owner_user_id", "config_json", "archived_at", "created_at", "updated_at"},
             "runs": {"id", "worker_id", "owner_user_id", "url_snapshot", "config_snapshot_json",

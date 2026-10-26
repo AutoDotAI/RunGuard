@@ -77,4 +77,5 @@ export const api: ApiClient = {
   getRunLogs: (id, afterId = 0) => request("GET", `/runs/${resourceId(id)}/logs`, undefined, { after_id: afterId }),
   retryRun: (id) => request("POST", `/runs/${resourceId(id)}/retry`),
   getDashboardSummary: () => request("GET", "/dashboard/summary", undefined, { window: "24h" }),
+  getAlerts: () => request("GET", "/alerts"),
 };

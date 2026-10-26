@@ -104,6 +104,25 @@ export interface DashboardSummary {
   recent_runs: Run[];
 }
 
+export interface Alert {
+  id: string;
+  kind: "repeated_run_failure" | "worker_queue_stalled";
+  severity: "warning" | "critical";
+  status: "open" | "resolved";
+  title: string;
+  run_id: string;
+  symptom: string;
+  fingerprint: string;
+  created_at: string;
+  resolved_at: string | null;
+  trace_id: string | null;
+}
+
+export interface AlertPage {
+  items: Alert[];
+  total: number;
+}
+
 export interface WorkerInput {
   name: string;
   kind: WorkerKind;
@@ -133,4 +152,5 @@ export interface ApiClient {
   getRunLogs(id: string, afterId?: number): Promise<RunLogPage>;
   retryRun(id: string): Promise<EnqueuedRun>;
   getDashboardSummary(): Promise<DashboardSummary>;
+  getAlerts(): Promise<AlertPage>;
 }

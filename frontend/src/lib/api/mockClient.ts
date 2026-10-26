@@ -320,5 +320,9 @@ export function createMockClient(getUserId: () => string | null): ApiClient {
         recent_runs: runs.slice(0, 10),
       });
     },
+    async getAlerts() {
+      owner();
+      return delay({ items: [], total: 0 });
+    },
   };
 }

@@ -41,6 +41,14 @@ afterEach(() => {
 });
 
 describe("FastAPI data client", () => {
+  it("loads only authenticated alerts from the backend", async () => {
+    await signIn();
+    const fetchMock = vi.fn().mockResolvedValue(json(200, { items: [], total: 0 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await api.getAlerts()).toEqual({ items: [], total: 0 });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/alerts");
+    expect(fetchMock.mock.calls[0]?.[1].headers.Authorization).toBe(`Bearer ${auth.getAccessToken()}`);
+  });
   it("requires a session before any protected fetch", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

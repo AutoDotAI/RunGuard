@@ -164,3 +164,22 @@ class DashboardSummary(StrictModel):
     success_rate: float | None
     avg_duration_ms: int | None
     recent_runs: list[Run]
+
+
+class Alert(StrictModel):
+    id: str
+    kind: Literal["repeated_run_failure", "worker_queue_stalled"]
+    severity: Literal["warning", "critical"]
+    status: Literal["open", "resolved"]
+    title: str
+    run_id: str
+    symptom: str
+    fingerprint: str
+    created_at: str
+    resolved_at: str | None
+    trace_id: str | None
+
+
+class AlertPage(StrictModel):
+    items: list[Alert]
+    total: int

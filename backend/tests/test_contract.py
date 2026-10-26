@@ -12,7 +12,7 @@ from app.main import create_app
 
 ROOT = Path(__file__).resolve().parents[2]
 METHODS = {"get", "post", "patch", "delete"}
-# The approved P0 surface in _docs/old/SPEC.md section 8. P1 /alerts is deferred.
+# Approved P0 operations plus the P1 owner-scoped alert list.
 OPERATIONS = {
     ("get", "/health"): ("200", "Health", None),
     ("post", "/api/v1/auth/register"): ("201", "TokenResponse", "Credentials"),
@@ -28,6 +28,7 @@ OPERATIONS = {
     ("get", "/api/v1/runs/{run_id}/logs"): ("200", "RunLogPage", None),
     ("post", "/api/v1/runs/{run_id}/retry"): ("202", "EnqueuedRun", None),
     ("get", "/api/v1/dashboard/summary"): ("200", "DashboardSummary", None),
+    ("get", "/api/v1/alerts"): ("200", "AlertPage", None),
 }
 PUBLIC = {("get", "/health"), ("post", "/api/v1/auth/register"), ("post", "/api/v1/auth/login")}
 QUERY = {
@@ -42,6 +43,7 @@ SHARED = {
     "SummarizerResult": "SummarizerResult", "Run": "Run", "RunPage": "Page",
     "EnqueuedRun": "EnqueuedRun", "RunLog": "RunLog", "RunLogPage": "RunLogPage",
     "DashboardSummary": "DashboardSummary",
+    "Alert": "Alert", "AlertPage": "AlertPage",
 }
 
 
@@ -115,7 +117,7 @@ def test_openapi_has_exact_p0_operations_resolved_references_and_explicit_respon
     all_refs_resolve(document, document)
     found = operations(document)
     assert set(found) == set(OPERATIONS)
-    assert "/api/v1/alerts" not in document["paths"]
+    assert "/api/v1/alerts" in document["paths"]
     assert document["components"]["securitySchemes"]["localBearer"]["scheme"] == "bearer"
     enqueue = found[("post", "/api/v1/workers/{worker_id}/runs")]
     assert {"400", "401", "404", "409", "429"} <= set(enqueue["responses"])

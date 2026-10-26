@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardSummary, Run, Worker } from "@/lib/api/types";
 
 const mocks = vi.hoisted(() => ({
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getRunLogs: vi.fn(),
   retryRun: vi.fn(),
   getDashboardSummary: vi.fn(),
+  getAlerts: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -75,6 +76,9 @@ function mount(element: ReactNode) {
 afterEach(() => {
   vi.resetAllMocks();
 });
+beforeEach(() => {
+  mocks.getAlerts.mockResolvedValue({ items: [], total: 0 });
+});
 
 describe("P0 screens with the typed API adapter", () => {
   it("shows a useful empty dashboard and a failed-run count from adapter data", async () => {
@@ -124,7 +128,7 @@ describe("P0 screens with the typed API adapter", () => {
   it("shows dashboard loading and a request error without displaying counts", async () => {
     mocks.getDashboardSummary.mockReturnValueOnce(new Promise(() => {}));
     const view = mount(<Dashboard />);
-    expect(screen.getByRole("status")).toHaveTextContent("Loading dashboard");
+    expect(screen.getByText("Loading dashboard…")).toBeInTheDocument();
     view.unmount();
 
     mocks.getDashboardSummary.mockRejectedValueOnce(new Error("Dashboard unavailable"));

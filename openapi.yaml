@@ -18,6 +18,7 @@ tags:
   - name: Workers
   - name: Runs
   - name: Dashboard
+  - name: Alerts
 paths:
   /health:
     get:
@@ -326,6 +327,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/DashboardSummary'
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/alerts:
+    get:
+      tags: [Alerts]
+      operationId: getAlerts
+      summary: List the authenticated user's open and resolved user-impact alerts
+      responses:
+        '200':
+          description: Owned alerts, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertPage'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 components:
@@ -663,6 +678,31 @@ components:
         recent_runs:
           type: array
           items: { $ref: '#/components/schemas/Run' }
+    Alert:
+      type: object
+      additionalProperties: false
+      required: [id, kind, severity, status, title, run_id, symptom, fingerprint, created_at, resolved_at, trace_id]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [repeated_run_failure, worker_queue_stalled] }
+        severity: { type: string, enum: [warning, critical] }
+        status: { type: string, enum: [open, resolved] }
+        title: { type: string }
+        run_id: { type: string, format: uuid }
+        symptom: { type: string }
+        fingerprint: { type: string }
+        created_at: { type: string, format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
+        trace_id: { type: [string, 'null'] }
+    AlertPage:
+      type: object
+      additionalProperties: false
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Alert' }
+        total: { type: integer, minimum: 0 }
     Error:
       type: object
       required: [code, message]

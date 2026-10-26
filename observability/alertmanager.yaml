@@ -1,0 +1,13 @@
+global:
+  resolve_timeout: 30s
+route:
+  receiver: local-inbox
+  group_by: [alertname, kind]
+  group_wait: 5s
+  group_interval: 30s
+  repeat_interval: 30m
+receivers:
+  - name: local-inbox
+    webhook_configs:
+      - url: http://operator-inbox:9094/
+        send_resolved: true
