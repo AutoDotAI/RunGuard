@@ -147,6 +147,25 @@ class ResponderActionRecord(Base):
     updated_at: Mapped[str] = mapped_column(String(35), nullable=False)
 
 
+class IncidentAnalysisRecord(Base):
+    __tablename__ = "incident_analyses"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    incident_id: Mapped[str] = mapped_column(String(36), ForeignKey("responder_incidents.id"), nullable=False)
+    owner_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String(40))
+    evidence_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
+    advisory: Mapped[str | None] = mapped_column(Text)
+    content_digest: Mapped[str | None] = mapped_column(String(64))
+    started_at: Mapped[str] = mapped_column(String(35), nullable=False)
+    finished_at: Mapped[str | None] = mapped_column(String(35))
+
+    __table_args__ = (Index("uq_incident_analysis_attempt", "incident_id", "attempt", unique=True),)
+
+
 def default_database_url() -> str:
     path = Path(__file__).resolve().parents[1] / "data" / "runguard.db"
     return f"sqlite:///{path}"
