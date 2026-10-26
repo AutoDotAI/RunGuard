@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import sys
 from uuid import uuid4
 
 import pytest
@@ -9,7 +10,7 @@ from sqlalchemy import select
 
 from app.db import (AlertRecord, IncidentAnalysisRecord, IncidentRecord,
                     RunRecord, UserRepository)
-from app.incident_ai import IncidentAI, MAX_OUTPUT
+from app.incident_ai import IncidentAI, MAX_OUTPUT, OutputTooLarge, _bounded_runner
 from app.models import WorkerCreate
 from app.store import PersistentStore, now
 
@@ -148,3 +149,12 @@ def test_codex_missing_login_is_audited_without_launch(incident_world, monkeypat
         .investigate(incident_id, alice)
     assert result["status"] == "fallback"
     assert result["failure_code"] == "CLI_LOGIN_MISSING"
+
+
+def test_host_runner_caps_live_subprocess_output_and_time(tmp_path):
+    options = {"input": "evidence", "text": True, "capture_output": True,
+               "cwd": str(tmp_path), "env": {"PATH": "/usr/bin"}, "check": False}
+    with pytest.raises(OutputTooLarge):
+        _bounded_runner([sys.executable, "-c", "print('x' * 20000)"], timeout=3, **options)
+    with pytest.raises(subprocess.TimeoutExpired):
+        _bounded_runner([sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.1, **options)

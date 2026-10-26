@@ -9,9 +9,12 @@ import hashlib
 import json
 import os
 import re
+import selectors
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -22,6 +25,7 @@ from .store import now
 
 
 MAX_OUTPUT = 4000
+MAX_CAPTURE = 16384
 TIMEOUT_SECONDS = 90
 CAUSES = {"worker_queue_stalled", "target_site_failure", "job_execution_failure"}
 EVENTS = {"RUN_QUEUED", "DEMO_WORKER_PAUSED", "DEMO_WORKER_RESUMED", "RUN_CLAIMED", "RUN_FAILED"}
@@ -115,8 +119,60 @@ def _safe_output(output: object) -> tuple[str | None, str | None]:
     return clean, None
 
 
+class OutputTooLarge(Exception):
+    pass
+
+
+def _bounded_runner(args, *, input: str, text: bool, capture_output: bool,
+                    timeout: float, cwd: str, env: dict, check: bool):
+    """Bound stdout while the host CLI runs; discard stderr completely."""
+    assert text and capture_output and not check
+    process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, cwd=cwd, env=env,
+                               start_new_session=True)
+    deadline = time.monotonic() + timeout
+    output = bytearray()
+    try:
+        try:
+            process.stdin.write(input.encode("utf-8"))
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(args, timeout)
+                ready = selector.select(remaining)
+                if not ready:
+                    raise subprocess.TimeoutExpired(args, timeout)
+                chunk = os.read(process.stdout.fileno(), 4096)
+                if not chunk:
+                    selector.unregister(process.stdout)
+                    break
+                output.extend(chunk)
+                if len(output) > MAX_CAPTURE:
+                    raise OutputTooLarge()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(args, timeout)
+        process.wait(timeout=remaining)
+    except (OutputTooLarge, subprocess.TimeoutExpired):
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        raise
+    finally:
+        process.stdout.close()
+    return subprocess.CompletedProcess(args, process.returncode,
+                                       stdout=output.decode("utf-8", errors="replace"), stderr="")
+
+
 class IncidentAI:
-    def __init__(self, users: UserRepository, *, runner=subprocess.run):
+    def __init__(self, users: UserRepository, *, runner=_bounded_runner):
         self.users = users
         self.runner = runner
 
@@ -199,6 +255,8 @@ class IncidentAI:
                             status, failure, advisory = "fallback", invalid_code, fallback
                 except subprocess.TimeoutExpired:
                     status, failure, advisory = "fallback", "CLI_TIMEOUT", fallback
+                except OutputTooLarge:
+                    status, failure, advisory = "fallback", "OUTPUT_TOO_LARGE", fallback
                 except OSError:
                     status, failure, advisory = "fallback", "CLI_UNAVAILABLE", fallback
 
