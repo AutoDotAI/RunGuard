@@ -133,8 +133,11 @@
   unconfigured API route clearly before execution; do not silently fall back
   or retry. Keep one host worker connected to PostgreSQL for CLI mode without
   exposing CLI credentials to Compose containers. The host Codex/Claude
-  adapters currently ignore the requested model; pass an allowlisted model
-  through fixed CLI arguments and test the exact invocation. Manual retry
+  adapters currently ignore the requested model; pass an explicitly selected
+  allowlisted model through a fixed `--model` CLI argument and test the exact
+  invocation. The catalog's `default` sentinel selects the CLI's native
+  default and omits `--model`; never pass the literal `default` as a model ID.
+  Manual retry
   keeps the failed run's original provider/model snapshot.
 - Expand behavior-focused worker tests around the two observed failures:
   oversized/unsupported PDF input fails before any model request, while
