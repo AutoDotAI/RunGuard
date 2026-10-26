@@ -1,0 +1,10 @@
+backend/.venv/
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm

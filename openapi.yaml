@@ -1,0 +1,636 @@
+openapi: 3.1.0
+info:
+  title: RunGuard API
+  version: 1.0.0
+  description: >-
+    Contract for the existing Lovable frontend's ApiClient. All application data
+    is served by FastAPI. This temporary in-memory demo backend handles local
+    email/password authentication and issues its own bearer token. Paths use
+    /api/v1 except /health. Data and signing keys reset on process restart.
+servers:
+  - url: /
+security:
+  - localBearer: []
+tags:
+  - name: Health
+  - name: Auth
+  - name: Workers
+  - name: Runs
+  - name: Dashboard
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Check API readiness without exposing secrets
+      security: []
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Create a local demo account with seeded sample data
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Credentials'
+      responses:
+        '201':
+          description: Account created; includes bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Exchange local demo credentials for a bearer token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Credentials'
+      responses:
+        '200':
+          description: Authenticated; includes bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/workers:
+    get:
+      tags: [Workers]
+      operationId: listWorkers
+      summary: List the authenticated user's active workers
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Active workers, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Workers]
+      operationId: createWorker
+      summary: Save a worker configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerCreate'
+      responses:
+        '201':
+          description: Created worker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/workers/{worker_id}:
+    parameters:
+      - $ref: '#/components/parameters/WorkerId'
+    get:
+      tags: [Workers]
+      operationId: getWorker
+      summary: Get an owned, active worker
+      responses:
+        '200':
+          description: Worker details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Workers]
+      operationId: updateWorker
+      summary: Update name or URL for future runs only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerUpdate'
+      responses:
+        '200':
+          description: Updated worker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Workers]
+      operationId: archiveWorker
+      summary: Soft archive a worker while preserving its runs and logs
+      responses:
+        '204':
+          description: Archived; no response body
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/workers/{worker_id}/runs:
+    parameters:
+      - $ref: '#/components/parameters/WorkerId'
+    post:
+      tags: [Runs]
+      operationId: runWorker
+      summary: Enqueue a run without executing it in the HTTP request
+      description: >-
+        No request body. At most one queued or running run per worker.
+        RUN_ALREADY_ACTIVE may include details.run_id in the error body.
+      responses:
+        '202':
+          description: Run queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnqueuedRun'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/runs:
+    get:
+      tags: [Runs]
+      operationId: listRuns
+      summary: List the authenticated user's runs, newest first
+      description: Includes historical runs of archived workers.
+      parameters:
+        - name: worker_id
+          in: query
+          description: Restrict to a worker owned by the caller
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/RunStatus'
+        - name: page
+          in: query
+          description: One-based page number used by the frontend
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          description: Requested page size; equivalent response limit is returned
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Paginated runs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/runs/{run_id}:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Runs]
+      operationId: getRun
+      summary: Get an owned run, including its configuration snapshot and result
+      responses:
+        '200':
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/runs/{run_id}/logs:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Runs]
+      operationId: getRunLogs
+      summary: Poll ordered, append-only logs after a cursor
+      parameters:
+        - name: after_id
+          in: query
+          description: Return log rows with an ID greater than this value
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Incremental log rows; next_after_id stays at after_id when empty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunLogPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/runs/{run_id}/retry:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [Runs]
+      operationId: retryRun
+      summary: Manually enqueue a new run from a failed run's original snapshot
+      description: >-
+        No request body. The original run is unchanged. Only failed runs whose
+        parent worker is still active may be retried.
+      responses:
+        '202':
+          description: New run queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnqueuedRun'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/dashboard/summary:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboardSummary
+      summary: Summarize the authenticated user's last 24 hours
+      parameters:
+        - name: window
+          in: query
+          schema:
+            type: string
+            enum: [24h]
+            default: 24h
+      responses:
+        '200':
+          description: Counts, rates and latest runs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+components:
+  securitySchemes:
+    localBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Local demo JWT returned by /api/v1/auth/register or /api/v1/auth/login.
+        The backend verifies signature, issuer, audience, expiry and subject;
+        ownership is derived from the verified subject.
+  parameters:
+    WorkerId:
+      name: worker_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RunId:
+      name: run_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      description: Maximum number of workers to return
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Offset:
+      name: offset
+      in: query
+      description: Zero-based worker list offset
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+  responses:
+    BadRequest:
+      description: Invalid query syntax
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing, invalid or expired Supabase access token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Item absent or owned by another user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Invalid state, archived worker or existing active run
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Invalid request fields or blocked URL
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Worker or active-run quota exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    Credentials:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 8, maxLength: 256 }
+    TokenResponse:
+      type: object
+      additionalProperties: false
+      required: [access_token, token_type, user]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, const: bearer }
+        user:
+          type: object
+          additionalProperties: false
+          required: [id, email]
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string, format: email }
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+    WorkerKind:
+      type: string
+      enum: [website_monitor, url_summarizer]
+    RunStatus:
+      type: string
+      enum: [queued, running, succeeded, failed]
+    LogLevel:
+      type: string
+      enum: [INFO, WARN, ERROR]
+    WorkerCreate:
+      type: object
+      additionalProperties: false
+      required: [name, kind, url]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: Must contain at least one non-whitespace character
+        kind:
+          $ref: '#/components/schemas/WorkerKind'
+        url:
+          $ref: '#/components/schemas/PublicUrl'
+    WorkerUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        url:
+          $ref: '#/components/schemas/PublicUrl'
+    PublicUrl:
+      type: string
+      format: uri
+      maxLength: 2048
+      description: >-
+        Public HTTP(S) URL. The backend enforces the approved SSRF and egress
+        policy; URI syntax alone does not establish safety.
+    LastRun:
+      type: object
+      additionalProperties: false
+      required: [id, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/RunStatus' }
+        created_at: { type: string, format: date-time }
+    Worker:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind, url, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { $ref: '#/components/schemas/WorkerKind' }
+        url: { type: string, format: uri }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        last_run:
+          anyOf:
+            - $ref: '#/components/schemas/LastRun'
+            - type: 'null'
+    WorkerPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Worker' }
+        total: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        offset: { type: integer, minimum: 0 }
+    MonitorResult:
+      type: object
+      additionalProperties: false
+      required: [http_status, response_time_ms, healthy]
+      properties:
+        http_status: { type: integer, minimum: 100, maximum: 599 }
+        response_time_ms: { type: integer, minimum: 0 }
+        healthy: { type: boolean }
+    SummarizerResult:
+      type: object
+      additionalProperties: false
+      required: [source_url, page_title, summary, model, input_was_truncated]
+      properties:
+        source_url: { type: string, format: uri }
+        page_title:
+          type: [string, 'null']
+        summary: { type: string }
+        model: { type: string }
+        input_was_truncated: { type: boolean }
+    RunError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Run:
+      type: object
+      additionalProperties: false
+      required: [id, worker_id, worker_name, kind, status, url, created_at, started_at, finished_at, duration_ms, result, error, retry_of_run_id]
+      properties:
+        id: { type: string, format: uuid }
+        worker_id: { type: string, format: uuid }
+        worker_name: { type: string }
+        kind: { $ref: '#/components/schemas/WorkerKind' }
+        status: { $ref: '#/components/schemas/RunStatus' }
+        url:
+          type: string
+          format: uri
+          description: Immutable URL snapshot used for this run
+        created_at: { type: string, format: date-time }
+        started_at:
+          type: [string, 'null']
+          format: date-time
+        finished_at:
+          type: [string, 'null']
+          format: date-time
+        duration_ms:
+          type: [integer, 'null']
+          minimum: 0
+        result:
+          anyOf:
+            - $ref: '#/components/schemas/MonitorResult'
+            - $ref: '#/components/schemas/SummarizerResult'
+            - type: 'null'
+        error:
+          anyOf:
+            - $ref: '#/components/schemas/RunError'
+            - type: 'null'
+        retry_of_run_id:
+          type: [string, 'null']
+          format: uuid
+    RunPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Run' }
+        total: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        offset: { type: integer, minimum: 0 }
+    EnqueuedRun:
+      type: object
+      additionalProperties: false
+      required: [run_id, worker_id, status, created_at]
+      properties:
+        run_id: { type: string, format: uuid }
+        worker_id: { type: string, format: uuid }
+        status:
+          type: string
+          const: queued
+        created_at: { type: string, format: date-time }
+    RunLog:
+      type: object
+      additionalProperties: false
+      required: [id, timestamp, level, event, message]
+      properties:
+        id: { type: integer, minimum: 1 }
+        timestamp: { type: string, format: date-time }
+        level: { $ref: '#/components/schemas/LogLevel' }
+        event: { type: string }
+        message: { type: string }
+    RunLogPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_after_id]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RunLog' }
+        next_after_id: { type: integer, minimum: 0 }
+    DashboardSummary:
+      type: object
+      additionalProperties: false
+      required: [window, total, succeeded, failed, success_rate, avg_duration_ms, recent_runs]
+      properties:
+        window:
+          type: string
+          const: 24h
+        total: { type: integer, minimum: 0 }
+        succeeded: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        success_rate:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 1
+        avg_duration_ms:
+          type: [integer, 'null']
+          minimum: 0
+        recent_runs:
+          type: array
+          items: { $ref: '#/components/schemas/Run' }
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+          description: >-
+            Field errors or conflict metadata. RUN_ALREADY_ACTIVE includes
+            run_id when an existing run can be opened.
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error, request_id]
+      properties:
+        error: { $ref: '#/components/schemas/Error' }
+        request_id: { type: string, format: uuid }
