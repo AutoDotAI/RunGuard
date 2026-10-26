@@ -3,6 +3,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 from threading import RLock
+from typing import Callable
 from uuid import uuid4
 
 from sqlalchemy import func, select, text
@@ -25,6 +26,10 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def parse_timestamp(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 class Problem(Exception):
     def __init__(self, status: int, code: str, message: str, details: dict | None = None):
         self.status = status
@@ -42,8 +47,10 @@ def validate_public_url(value: str) -> str:
 
 
 class PersistentStore:
-    def __init__(self, users: UserRepository):
+    def __init__(self, users: UserRepository,
+                 clock: Callable[[], datetime] | None = None):
         self.users = users
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
         # The lock reduces contention within one process. SQLite transactions and
         # the partial unique index enforce limits across independent processes.
         self.lock = RLock()
@@ -251,17 +258,28 @@ class PersistentStore:
                               next_after_id=records[-1].id if records else after_id)
 
     def dashboard(self, owner: str) -> DashboardSummary:
+        evaluated_at = self.clock().astimezone(timezone.utc)
+        since = evaluated_at - timedelta(hours=24)
         with self.users.sessions() as session:
             all_runs = session.scalars(select(RunRecord).where(
-                RunRecord.owner_user_id == owner).order_by(
-                RunRecord.created_at.desc(), RunRecord.id.desc())).all()
-            since = datetime.now(timezone.utc) - timedelta(hours=24)
-            window = [run for run in all_runs if datetime.fromisoformat(
-                run.created_at.replace("Z", "+00:00")) >= since]
+                RunRecord.owner_user_id == owner)).all()
+            all_runs.sort(key=lambda run: (parse_timestamp(run.created_at), run.id), reverse=True)
+            window = [run for run in all_runs if since <= parse_timestamp(run.created_at) <= evaluated_at]
             completed = [run for run in window if run.status in ("succeeded", "failed")]
             succeeded = sum(run.status == "succeeded" for run in completed)
+            durations = []
+            for run in completed:
+                duration = run.duration_ms
+                if duration is None and run.finished_at is not None and (run.started_at is not None or run.status == "failed"):
+                    # FR-06 permits timestamp recovery; queued failures use queue age.
+                    start = parse_timestamp(run.started_at or run.created_at)
+                    finish = parse_timestamp(run.finished_at)
+                    duration = round((finish - start).total_seconds() * 1000)
+                if duration is None or duration < 0:
+                    raise Problem(500, "DASHBOARD_DATA_INTEGRITY", "Completed run has no valid duration")
+                durations.append(duration)
             return DashboardSummary(window="24h", total=len(window), succeeded=succeeded,
                                     failed=len(completed) - succeeded,
                                     success_rate=succeeded / len(completed) if completed else None,
-                                    avg_duration_ms=round(sum(run.duration_ms or 0 for run in completed) / len(completed)) if completed else None,
+                                    avg_duration_ms=round(sum(durations) / len(durations)) if completed else None,
                                     recent_runs=[self._public_run(run) for run in all_runs[:10]])
