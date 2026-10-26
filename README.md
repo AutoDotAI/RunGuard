@@ -25,6 +25,61 @@ commits still go
 to `AutoDotAI/screenshot-guard-studio`; see
 [_docs/lovable-sync.md](_docs/lovable-sync.md) before importing later changes.
 
+## Makefile command index
+
+Run `make` or `make help` to list every target without installing software or
+starting a service. The Makefile wraps the commands below; it does not create
+or print credentials. Install [uv](https://docs.astral.sh/uv/), Python 3.12+,
+Node.js/npm, and `make`. Docker Engine with Compose is needed for container
+targets; Python 3 is needed for the optional smoke scripts.
+
+For separate local processes, use `make install`, then export one stable
+`RUNGUARD_AUTH_SECRET` of at least 32 bytes and configure
+`frontend/.env.local` from its example. Run `make migrate`, `make api`,
+`make worker`, and `make frontend` in separate terminals. The host worker
+uses an existing Codex CLI login by default for URL Summarizer; select
+`make worker-claude` for a signed-in Claude CLI or `make worker-litellm`
+after setting `LLM_MODEL` and the provider credential **only on the host**.
+`make worker-codex` selects Codex explicitly. Start exactly one worker with
+the same SQLite URL as the API; do not run a host worker alongside the
+Compose worker for that database. The Compose worker starts with its model
+provider disabled, so Website Monitor still works while summarization
+fails visibly until an optional API-key provider is configured. See
+[docs/model-providers.md](docs/model-providers.md). The API binds to
+127.0.0.1:8000; the frontend opens on the local Vite port. `make check` installs
+locked dependencies and runs backend/frontend tests, TypeScript, the frontend
+build, and local CD validation. Individual targets include `make test-backend`,
+`make test-frontend`, `make typecheck`, `make build`, and `make cd-check`.
+
+For the local container stack, configure the ignored root `.env` as shown
+below, then run `make compose-config`, `make compose-up`, and
+`make compose-status`. `make compose-smoke` exercises the API-to-worker path
+and may contact `example.com`; `make compose-logs` shows bounded logs, and
+`make compose-down` stops services **without deleting the SQLite volume**.
+The optional local telemetry profile uses `make observability-up`,
+`make observability-smoke`, and `make observability-down`.
+
+The alert and responder drills need a new isolated project and an explicit
+demo gate. For example, `make demo-stall-up DEMO_MODE=true
+DEMO_PROJECT=rg-demo-mytest`, followed by `make demo-stall-smoke` and
+`make demo-stall-down` with the same variables. Substitute `responder-*` for
+the bounded responder drill. These commands reject a missing or unsafe
+project name before changing Compose state. `make rollback-rehearsal` runs
+the local A→B→A exercise; it does not roll back a public host. Public deploy
+and actual-host rollback remain deferred to [#34](https://github.com/AutoDotAI/RunGuard/issues/34).
+
+For an **optional** read-only investigation of an already open, owned
+incident, use `make incident-investigate INCIDENT_ID=<id>
+OWNER_USER_ID=<id>` with an existing host Codex CLI login. Add
+`INCIDENT_PROVIDER=claude` for Claude. `make incident-review` reads the
+saved advisory without another CLI call; `make incident-retry` explicitly
+requests a fresh attempt. Supply the same IDs to each command and set the
+same `RUNGUARD_DATABASE_URL` as the local API. These commands never run on
+alerts automatically or approve remediation. The normal Docker volume is
+not readable by this host command without the documented local bind-mount
+setup in [docs/incident-ai.md](docs/incident-ai.md). A CLI login is separate
+from a LiteLLM API key; neither is copied into Docker or the browser.
+
 ## Frontend baseline
 
 Requirements: Node.js and npm. From a fresh checkout:
