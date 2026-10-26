@@ -59,3 +59,24 @@ deterministic incident or any user job. No real CLI is called by CI.
 This host CLI login is separate from the optional server-side LiteLLM API key
 for URL Summarizer. A subscription login is not copied into RunGuard's API or
 worker containers as a provider credential.
+
+## Optional real CLI smoke
+
+This command spends one request through the selected host CLI. Run it only
+with an already open incident in the local host-readable stack. Set
+and export `INCIDENT_ID`, `OWNER_USER_ID`, and `RUN_ID` from that incident. From `backend/`:
+
+```bash
+before_tree="$(git -C .. status --porcelain)"
+before_run="$(uv run python -c 'import os; from app.db import UserRepository, RunRecord; u=UserRepository(); s=u.sessions(); print(s.get(RunRecord, os.environ["RUN_ID"]).status); s.close(); u.close()')"
+uv run python -m app.incident_ai investigate "$INCIDENT_ID" --owner-id "$OWNER_USER_ID"
+uv run python -m app.incident_ai review "$INCIDENT_ID" --owner-id "$OWNER_USER_ID"
+after_run="$(uv run python -c 'import os; from app.db import UserRepository, RunRecord; u=UserRepository(); s=u.sessions(); print(s.get(RunRecord, os.environ["RUN_ID"]).status); s.close(); u.close()')"
+test "$before_tree" = "$(git -C .. status --porcelain)"
+test "$before_run" = "$after_run"
+```
+
+`review` should show a completed or sanitized fallback audit with
+`human_review_required: true`. The final two checks ensure the repository
+and the bound run did not change during analysis. CI uses fake subprocesses
+and never runs this smoke.
