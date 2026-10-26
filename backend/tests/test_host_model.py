@@ -113,6 +113,26 @@ def test_cli_timeout_and_output_cap_kill_child(tmp_path, monkeypatch):
         HostCLIClient("codex").complete(model="codex-cli", system="system", user="page")
 
 
+def test_exited_cli_leaves_no_running_stdout_child(tmp_path, monkeypatch):
+    from app.workers import host_model
+
+    pid_file = tmp_path / "child.pid"
+    _fake_cli(tmp_path, "codex",
+        "import pathlib, subprocess\n"
+        f"child = subprocess.Popen(['sleep', '5'])\npathlib.Path({str(pid_file)!r}).write_text(str(child.pid))\n")
+    monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ['PATH']}")
+    monkeypatch.setattr(host_model, "CLI_DEADLINE_SECONDS", 0.2)
+    with pytest.raises(TimeoutError):
+        HostCLIClient("codex").complete(model="codex-cli", system="system", user="page")
+    child_state = Path(f"/proc/{pid_file.read_text()}/stat")
+    # It may briefly be a zombie awaiting init, but it must not keep running.
+    try:
+        state = child_state.read_text().split()[2]
+    except FileNotFoundError:
+        state = "gone"
+    assert state in {"Z", "gone"}
+
+
 def test_hostile_page_is_data_not_shell(tmp_path, monkeypatch):
     marker = tmp_path / "should-not-exist"
     _fake_cli(tmp_path, "codex", "import sys\n_ = sys.stdin.read()\n"

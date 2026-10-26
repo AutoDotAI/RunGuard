@@ -81,11 +81,13 @@ def _cli_environment() -> dict[str, str]:
 
 
 def _stop_group(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is None:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+    # A CLI can exit after spawning a child that inherited stdout. The parent
+    # has already exited in that case, but the child still keeps our read open.
+    # Kill the whole session before reaping the original process.
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
     process.wait()
 
 
