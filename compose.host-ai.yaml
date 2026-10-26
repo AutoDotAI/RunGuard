@@ -1,0 +1,10 @@
+# Opt-in local stack with a host-readable SQLite directory. Use a new Compose
+# project so Docker does not reuse the ordinary named volume with old options.
+# The host CLI login is never mounted into any container.
+volumes:
+  runguard_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${RUNGUARD_HOST_DATA_DIR:?Set an absolute host data directory}

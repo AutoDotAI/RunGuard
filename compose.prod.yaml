@@ -76,6 +76,7 @@ services:
       RUNGUARD_DATABASE_URL: sqlite:////data/runguard.db
       RUNGUARD_PUBLIC_MODE: "1"
       RUNGUARD_ALLOWED_HOSTS: ${RUNGUARD_ALLOWED_HOSTS:?Set trusted public hosts}
+      RUNGUARD_MODEL_PROVIDER: ${RUNGUARD_MODEL_PROVIDER:-disabled}
       LLM_MODEL: ${LLM_MODEL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     command: ["python", "-m", "app.workers.runner"]

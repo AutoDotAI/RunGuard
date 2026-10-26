@@ -83,8 +83,9 @@ control. The bounded responder below uses this same gate.
 
 The responder is a separate backend command. It scans only persisted open
 alerts and creates one SQLite incident per alert. Its four fixed inspections
-read worker heartbeat, the owned failed run, recent safe event codes, and the
-owned queue depth. A deterministic policy diagnoses target failures separately
+read worker heartbeat, the owned failed run, recent safe error codes plus the
+affected run's fixed lifecycle log IDs, and the owned queue depth. They never
+copy log message text. A deterministic policy diagnoses target failures separately
 from worker/platform failures. It uses no model key, untrusted page text,
 arbitrary tool, shell command, or automatic run retry.
 

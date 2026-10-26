@@ -53,10 +53,19 @@ class Responder:
                 "trace_id": run.trace_id}
 
     @staticmethod
-    def get_recent_errors(session, owner: str) -> list[dict]:
-        rows = session.scalars(select(RunLogRecord).where(
+    def get_recent_errors(session, owner: str, run_id: str) -> list[dict]:
+        errors = session.scalars(select(RunLogRecord).where(
             RunLogRecord.owner_user_id == owner,
             RunLogRecord.level == "ERROR").order_by(RunLogRecord.id.desc()).limit(5)).all()
+        # A stalled run has not failed yet, so it may have no ERROR log. Include
+        # only its fixed lifecycle events as evidence, never log message text.
+        lifecycle = session.scalars(select(RunLogRecord).where(
+            RunLogRecord.owner_user_id == owner, RunLogRecord.run_id == run_id,
+            RunLogRecord.event.in_(("RUN_QUEUED", "DEMO_WORKER_PAUSED",
+                                     "DEMO_WORKER_RESUMED", "RUN_CLAIMED")))
+            .order_by(RunLogRecord.id.desc()).limit(5)).all()
+        rows = sorted({row.id: row for row in [*errors, *lifecycle]}.values(),
+                      key=lambda row: row.id, reverse=True)
         return [{"log_id": row.id, "run_id": row.run_id,
                  "event": row.event if row.event in MESSAGES else "HANDLER_ERROR"}
                 for row in rows]
@@ -111,7 +120,7 @@ class Responder:
 
             health = self.get_worker_health()
             failed = self.get_failed_run(session, owner_id, run.id)
-            errors = self.get_recent_errors(session, owner_id)
+            errors = self.get_recent_errors(session, owner_id, run.id)
             depth = self.get_queue_depth(session, owner_id)
             # Evidence is IDs, fixed event codes and bounded health facts. Never
             # use alert.symptom, run.error_message, URLs, or fetched page text.
@@ -119,7 +128,7 @@ class Responder:
                         "run_id": run.id, "trace_id": run.trace_id,
                         "log_ids": [item["log_id"] for item in errors],
                         "error_run_ids": [item["run_id"] for item in errors],
-                        "error_events": [item["event"] for item in errors],
+                        "log_events": [item["event"] for item in errors],
                         "error_code": failed["error_code"] if failed else None,
                         "queue_depth": depth["owned_queued"], "worker_healthy": health["healthy"]}
             if alert.kind == "worker_queue_stalled":

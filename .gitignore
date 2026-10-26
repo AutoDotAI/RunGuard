@@ -9,3 +9,4 @@ backend/.venv/
 *.db-wal
 *.db-shm
 *.db.worker.lock
+.local-data/

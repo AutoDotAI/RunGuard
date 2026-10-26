@@ -9,6 +9,7 @@ from app import outbound
 from app import observability
 
 from .llm import LLMClient, LiteLLMClient
+from .host_model import HostCLIClient
 from .types import HandlerOutcome, RunSnapshot
 
 
@@ -65,6 +66,21 @@ class _VisibleHTML(HTMLParser):
 
 def _clean(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
+
+
+def _provider(llm: LLMClient | None, model: str | None) -> tuple[LLMClient, str] | None:
+    """Select one server-side provider; never fall back after a failure."""
+    if llm is not None or model is not None:
+        # Explicit injection preserves the deterministic test/integration path.
+        label = model if model is not None else os.environ.get("LLM_MODEL", "")
+        return (llm or LiteLLMClient(), label) if label else None
+    choice = os.environ.get("RUNGUARD_MODEL_PROVIDER", "codex").strip().lower()
+    if choice in {"codex", "claude"}:
+        return HostCLIClient(choice), f"{choice}-cli"
+    if choice == "litellm":
+        label = os.environ.get("LLM_MODEL", "").strip()
+        return (LiteLLMClient(), label) if label else None
+    return None
 
 
 def summarize(snapshot: RunSnapshot, *,
@@ -137,15 +153,16 @@ def summarize(snapshot: RunSnapshot, *,
         page_text = prefix.rsplit(" ", 1)[0].rstrip() if " " in prefix else prefix
         emit("INPUT_TRUNCATED", "Readable page text truncated to input limit", "INFO")
     emit("TEXT_EXTRACTED", "Readable page text extracted", "INFO")
-    selected_model = model if model is not None else os.environ.get("LLM_MODEL", "")
-    if not selected_model:
+    selected = _provider(llm, model)
+    if selected is None:
         emit("LLM_REQUEST_FAILED", "Summarization provider unavailable", "ERROR")
         return HandlerOutcome(None, http_status=response.status,
                               error_code="LLM_ERROR", error_message="Summarization provider unavailable")
+    client, selected_model = selected
     emit("LLM_REQUEST_STARTED", f"Requesting summary with {PROMPT_VERSION}", "INFO")
     try:
         with observability.tracer().start_as_current_span("llm.summarize"):
-            summary = (llm or LiteLLMClient()).complete(
+            summary = client.complete(
                 model=selected_model, system=SYSTEM_PROMPT,
                 user=f"Webpage evidence ({PROMPT_VERSION}):\n{page_text}")
         if not isinstance(summary, str) or not summary.strip():

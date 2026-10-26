@@ -121,6 +121,7 @@ def test_large_nonnegative_cursor_is_empty_without_sqlite_overflow(tmp_path, cur
 @pytest.mark.parametrize("failure", ["fetch", "extraction", "llm"])
 def test_summarizer_failure_logs_are_safe_and_terminal(tmp_path, monkeypatch, failure):
     path = tmp_path / f"{failure}.db"
+    monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "litellm")
     monkeypatch.setenv("LLM_MODEL", "test/model")
 
     def fetch(_url):
@@ -159,6 +160,7 @@ def test_summarizer_failure_logs_are_safe_and_terminal(tmp_path, monkeypatch, fa
 
 def test_summarizer_success_logs_every_step(tmp_path, monkeypatch):
     path = tmp_path / "success.db"
+    monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "litellm")
     monkeypatch.setenv("LLM_MODEL", "test/model")
     monkeypatch.setattr(outbound, "fetch", lambda _url: outbound.FetchResponse(
         200, {"Content-Type": "text/html"}, b"<p>" + b"readable evidence " * 20 + b"</p>"))

@@ -149,6 +149,7 @@ def test_oldest_first_one_active_execution_and_sanitized_failure(tmp_path):
 
 
 def test_unconfigured_summarizer_fails_visibly_without_fabricated_result(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "disabled")
     monkeypatch.delenv("LLM_MODEL", raising=False)
     path = tmp_path / "app.db"
     with setup_client(path) as client:
@@ -179,7 +180,8 @@ def test_cli_process_consumes_durable_queue_after_api_restart(tmp_path):
             session.commit()
     completed = subprocess.run(
         [sys.executable, "-m", "app.workers.runner", "--once"],
-        env={**os.environ, "RUNGUARD_DATABASE_URL": f"sqlite:///{path}", "LLM_MODEL": ""},
+        env={**os.environ, "RUNGUARD_DATABASE_URL": f"sqlite:///{path}",
+             "RUNGUARD_MODEL_PROVIDER": "disabled", "LLM_MODEL": ""},
         capture_output=True, text=True, timeout=15, check=False)
     assert completed.returncode == 0, completed.stderr
     with setup_client(path) as client:
