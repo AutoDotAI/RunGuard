@@ -1,4 +1,4 @@
-# Public deployment gate (issue #23)
+# Local deployment security validation (issue #23)
 
 For digest-based development and manual production CD, see
 [CD.md](CD.md). The host safety gate below applies before enabling either
@@ -86,7 +86,10 @@ model request.
    compose --env-file .env.production -f compose.prod.yaml down` retains data;
    `down --volumes` destroys it and must not be used during normal operation.
 
-Public QA must independently repeat the HTTPS, browser, secret, and egress
-checks and record the actual hostname, commit/image, commands, and results on
-issue #23. Until host/domain/access are supplied and that evidence exists,
-issue #23 remains open and the repository is only locally ready.
+The local production-style security checks and isolated probe belong to
+[issue #23](https://github.com/AutoDotAI/RunGuard/issues/23). External HTTPS,
+browser, secret, and actual-host egress checks, with the real hostname,
+commit/image, commands, and results, are deferred to
+[issue #34](https://github.com/AutoDotAI/RunGuard/issues/34). Until that
+evidence exists, the repository is only locally ready. A model provider key
+remains optional and server-side; no agent subscription supplies an API key.

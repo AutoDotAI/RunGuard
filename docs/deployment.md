@@ -2,9 +2,11 @@
 
 Public hosting setup and security gates are in [the deployment README](../deploy/README.md).
 Digest publication and manual production promotion are in [CD.md](../deploy/CD.md).
-The following commands apply only to the **single approved host** after its HTTPS
-and egress QA has passed. Development and production use separate host directories,
-Compose project names, `.env` files, state records, and SQLite volumes.
+The local A→B→A rehearsal below runs without a host or published ports. The
+backup, manual rollback, and restore commands for an actual deployment apply
+only to a **single approved host** after its HTTPS and egress QA has passed
+under #34. Development and production use separate host directories, Compose
+project names, `.env` files, state records, and SQLite volumes.
 
 ## Evidence and prerequisites
 
@@ -122,6 +124,8 @@ migrations are compatible with the restored schema and repeat the HTTPS
 authenticated smoke. A restore replaces database contents and is a separate,
 deliberate recovery action; normal image rollback never does it.
 
-The actual development-host rollback and redacted digest, health, smoke,
-and persistence evidence remain required on [issue #25](https://github.com/AutoDotAI/RunGuard/issues/25)
-after the [public-host gate](https://github.com/AutoDotAI/RunGuard/issues/23) passes.
+Issue [#25](https://github.com/AutoDotAI/RunGuard/issues/25) covers the
+verified local backup and A→B→A rollback rehearsal. Actual development-host
+rollback and redacted digest, health, smoke, and persistence evidence are
+deferred to [#34](https://github.com/AutoDotAI/RunGuard/issues/34). No host
+or domain has been supplied, so this runbook records no public deployment.

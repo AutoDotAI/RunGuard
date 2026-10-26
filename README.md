@@ -93,7 +93,10 @@ origin. New accounts show an empty dashboard. The `migrate` container must
 exit `0` before `api` and `worker` start, and `api` and `web` should be healthy.
 The API and exactly one worker share `runguard_data`, a local named SQLite
 volume. Both published ports bind to loopback only. This setup is for local
-use; public hosting and outbound egress controls are tracked in issue #23.
+use. Local production-style egress validation is tracked in
+[issue #23](https://github.com/AutoDotAI/RunGuard/issues/23); actual public
+hosting and external security proof are deferred to
+[issue #34](https://github.com/AutoDotAI/RunGuard/issues/34).
 
 For a local end-to-end smoke, run:
 
@@ -178,10 +181,13 @@ CI does not start the containers, call live target websites or model providers,
 publish images, or deploy. Its tests inject outbound HTTP and model fakes;
 the local Compose smoke above is the separate runtime check.
 
-## Public deployment preparation
+## Local deployment preparation and deferred public hosting
 
 The one-host HTTPS topology, exact destination allowlist, worker firewall,
 rate limits, and isolated local probe are documented in
-[deploy/README.md](deploy/README.md). Public deployment remains gated on a
-supplied host/domain, a repeated host egress probe, and independent external
-HTTPS QA for [issue #23](https://github.com/AutoDotAI/RunGuard/issues/23).
+[deploy/README.md](deploy/README.md). Local production-style security checks
+belong to [#23](https://github.com/AutoDotAI/RunGuard/issues/23). Public
+deployment remains deferred to [#34](https://github.com/AutoDotAI/RunGuard/issues/34)
+until a host, domain, access method, and external HTTPS/egress QA are available.
+A model provider key is optional and server-side; an agent or ChatGPT
+subscription is not a backend API credential.

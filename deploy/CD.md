@@ -36,13 +36,13 @@ host first. This repository does not provision a host or a domain.
    account. The first authenticated smoke registers it if login returns 401;
    subsequent releases log in. Keep the file mode `600` and back up its secret
    outside Git. Do not print it or a rendered Compose config in Actions logs.
-4. Run the #23 egress/HTTPS checks **on each host** before creating the
+4. Run the #34 egress/HTTPS checks **on each host** before creating the
    host-local `.cd-security-approved` marker. The deployment script refuses to
    run without the marker. Ensure ports 80/443 and the domain work before
    enabling automation. API and worker must remain on one host with one
    persistent Docker volume; never add replicas.
 5. Set repository variables `CD_ALLOWED_HOSTS` to the shared build-time
-   allowlist and `CD_SECURITY_GATE_PASSED=true` only after #23 external QA.
+   allowlist and `CD_SECURITY_GATE_PASSED=true` only after #34 external QA.
    Set `CD_DEV_ENABLED=true` to start automatic development deployments after
    green `main` CI. Set `CD_PROD_ENABLED=true` only after production host QA.
    Missing/false variables skip host jobs; published images alone do not mean
@@ -76,7 +76,7 @@ input can specify a host, command, Compose file, mutable tag, or database.
 
 Inspect the Actions jobs and the two deployment artifacts. The host also has
 `state/current.json`, `state/previous.json`, and `state/attempts.jsonl`.
-Record the actual URL, health, browser, and egress results on #23/#24 before
+Record the actual URL, health, browser, and egress results on #34 before
 calling a public deployment complete.
 
 ## Host-free validation
