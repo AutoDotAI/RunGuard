@@ -9,9 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .auth import TokenService
+from .ai_settings import AiSettingsService
 from .db import UserRepository
 from .models import Health
-from .routers import auth, dashboard, runs, workers, alerts
+from .routers import auth, dashboard, runs, workers, alerts, ai_settings
 from .store import PersistentStore, Problem
 from .rate_limit import RateLimiter, RateLimited
 from .outbound import allowed_public_hosts
@@ -55,12 +56,13 @@ def create_app(store: PersistentStore | None = None, secret: str | None = None,
     app.state.users = users
     app.state.store = store if store is not None else PersistentStore(users)
     app.state.alerts = AlertService(users)
+    app.state.ai_settings = AiSettingsService(users)
     app.state.rate_limiter = RateLimiter()
     # Keep module import side-effect free; uvicorn validates the configured secret at startup.
     app.state.tokens = TokenService(secret) if secret is not None else None
     origins = os.environ.get("RUNGUARD_CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173")
     app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in origins.split(",") if origin.strip()],
-                       allow_methods=["GET", "POST", "PATCH", "DELETE"],
+                       allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
                        allow_headers=["Authorization", "Content-Type"],
                        expose_headers=["X-Request-ID"])
 
@@ -132,6 +134,7 @@ def create_app(store: PersistentStore | None = None, secret: str | None = None,
     app.include_router(runs.router)
     app.include_router(dashboard.router)
     app.include_router(alerts.router)
+    app.include_router(ai_settings.router)
     return app
 
 
