@@ -31,14 +31,19 @@ function WorkerDetail() {
 export function WorkerDetailView({ id }: { id: string }) {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
-  const w = useQuery({ queryKey: ["worker", id], queryFn: () => api.getWorker(id) });
+  const w = useQuery({
+    queryKey: ["worker", id],
+    queryFn: () => api.getWorker(id),
+    refetchInterval: (q) => (q.state.data?.last_run && isActive(q.state.data.last_run.status) ? 2500 : false),
+  });
   const runs = useQuery({
     queryKey: ["runs", id, page],
     queryFn: () => api.listRuns({ worker_id: id, page, page_size: PAGE }),
     refetchInterval: (q) => (q.state.data?.items.some((r) => isActive(r.status)) ? 2500 : false),
   });
   const run = useRunWorker();
-  const active = (w.data?.last_run && isActive(w.data.last_run.status)) ||
+  const visibleLatest = runs.data?.items.find((r) => r.id === w.data?.last_run?.id);
+  const active = (visibleLatest ? isActive(visibleLatest.status) : !!w.data?.last_run && isActive(w.data.last_run.status)) ||
     (runs.data?.items.some((r) => isActive(r.status)) ?? false);
   const pages = runs.data ? Math.max(1, Math.ceil(runs.data.total / PAGE)) : 1;
 

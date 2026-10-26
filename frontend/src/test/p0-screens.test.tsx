@@ -73,7 +73,7 @@ function mount(element: ReactNode) {
 }
 
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 describe("P0 screens with the typed mock adapter", () => {
@@ -133,6 +133,35 @@ describe("P0 screens with the typed mock adapter", () => {
     expect(await screen.findByRole("button", { name: /Run in progress/i })).toBeDisabled();
     expect(await screen.findByRole("alert")).toHaveTextContent("History unavailable");
   });
+
+  it.each(["succeeded", "failed"] as const)(
+    "re-enables Run Now when a queued run becomes %s in refreshed history",
+    async (status) => {
+      // getWorker deliberately stays stale to reproduce the original failure.
+      mocks.getWorker.mockResolvedValue({
+        ...worker,
+        last_run: { id: "run-active", status: "queued", created_at: now },
+      });
+      mocks.listRuns.mockResolvedValueOnce({
+        items: [{ ...failedRun, id: "run-active", status: "queued" }],
+        total: 1,
+        limit: 10,
+        offset: 0,
+      });
+      const view = mount(<WorkerDetailView id={worker.id} />);
+      expect(await screen.findByRole("button", { name: /Run in progress/i })).toBeDisabled();
+      await waitFor(() => expect(mocks.listRuns).toHaveBeenCalledTimes(1));
+
+      mocks.listRuns.mockResolvedValue({
+        items: [{ ...failedRun, id: "run-active", status }],
+        total: 1,
+        limit: 10,
+        offset: 0,
+      });
+      await view.client.invalidateQueries({ queryKey: ["runs", worker.id, 1] });
+      expect(await screen.findByRole("button", { name: "Run now" })).toBeEnabled();
+    },
+  );
 
   it("keeps a failed run inspectable while manual retry routes to a distinct run", async () => {
     mocks.getRun.mockResolvedValue(failedRun);
