@@ -15,7 +15,7 @@ Requirements: Node.js and npm. From a fresh checkout:
 
 ```bash
 cd frontend
-npm install --no-package-lock
+npm ci --no-audit --no-fund
 npm run build
 npm test
 npm run dev
@@ -37,7 +37,7 @@ From a fresh checkout, install dependencies and run the tests without any
 ```bash
 git clone https://github.com/AutoDotAI/RunGuard.git
 cd RunGuard/backend
-uv sync --extra test
+uv sync --locked --extra test
 uv run pytest -q
 ```
 
@@ -137,3 +137,40 @@ recreate the worker with `docker compose up -d --force-recreate worker`. The
 worker alone receives those settings; they are never
 built into the frontend image. Without a model, a summarizer run returns its
 existing `LLM_ERROR` provider-unavailable result.
+
+## Continuous integration
+
+The [CI workflow](.github/workflows/ci.yml) runs on pushes to `main` and pull
+requests into `main`; its [GitHub Actions status](https://github.com/AutoDotAI/RunGuard/actions/workflows/ci.yml)
+shows the three required checks. In a fresh checkout, these are the local
+equivalents (from the repository root):
+
+```bash
+cd backend
+uv sync --locked --extra test
+uv run --no-sync pytest -q
+cd ../frontend
+npm ci --no-audit --no-fund
+npm test
+npx tsc --noEmit
+npm run build
+cd ..
+docker build -t runguard-api:ci ./backend
+docker build -t runguard-web:ci ./frontend
+```
+
+The backend install uses the committed `uv.lock`; `--locked` rejects a stale
+lockfile. The frontend uses `package-lock.json` with `npm ci`, including in its
+Docker build. The existing `bun.lock` remains part of the Lovable source
+snapshot. In a **disposable checkout without an existing `.env`**, validate
+Compose with a temporary signing secret:
+
+```bash
+python3 -c 'from pathlib import Path; import secrets; Path(".env").write_text("RUNGUARD_AUTH_SECRET=" + secrets.token_hex(32) + "\n")'
+docker compose config --quiet
+rm -f .env
+```
+
+CI does not start the containers, call live target websites or model providers,
+publish images, or deploy. Its tests inject outbound HTTP and model fakes;
+the local Compose smoke above is the separate runtime check.
