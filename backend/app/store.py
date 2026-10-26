@@ -162,7 +162,7 @@ class MemoryStore:
                "duration_ms": None, "result": None, "error": None, "retry_of_run_id": retry_of}
         self.runs[run["id"]] = run
         self._append_log(owner, run["id"], "RUN_QUEUED", "Run queued for execution")
-        return EnqueuedRun(run_id=run["id"], worker_id=worker["id"], created_at=run["created_at"])
+        return EnqueuedRun(run_id=run["id"], worker_id=worker["id"], status="queued", created_at=run["created_at"])
 
     def run_worker(self, owner: str, worker_id: str) -> EnqueuedRun:
         with self.lock:
@@ -210,7 +210,7 @@ class MemoryStore:
             window = [r for r in all_runs if datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")) >= since]
             completed = [r for r in window if r["status"] in ("succeeded", "failed")]
             succeeded = sum(r["status"] == "succeeded" for r in completed)
-            return DashboardSummary(total=len(window), succeeded=succeeded,
+            return DashboardSummary(window="24h", total=len(window), succeeded=succeeded,
                                     failed=len(completed) - succeeded,
                                     success_rate=succeeded / len(completed) if completed else None,
                                     avg_duration_ms=round(sum(r["duration_ms"] or 0 for r in completed) / len(completed)) if completed else None,

@@ -16,7 +16,7 @@ from .store import Problem
 
 ISSUER = "runguard-demo"
 AUDIENCE = "runguard-api"
-bearer = HTTPBearer(auto_error=False)
+bearer = HTTPBearer(auto_error=False, scheme_name="localBearer")
 
 
 def hash_password(password: str) -> str:

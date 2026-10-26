@@ -4,9 +4,10 @@ info:
   version: 1.0.0
   description: >-
     Contract for the existing Lovable frontend's ApiClient. All application data
-    is served by FastAPI. This temporary in-memory demo backend handles local
-    email/password authentication and issues its own bearer token. Paths use
-    /api/v1 except /health. Data and signing keys reset on process restart.
+    is served by FastAPI. FastAPI handles local email/password authentication
+    and issues signed bearer tokens. SQLite is the production persistence
+    layer for application data and password hashes. Paths use /api/v1 except
+    /health.
 servers:
   - url: /
 security:
@@ -41,7 +42,7 @@ paths:
     post:
       tags: [Auth]
       operationId: register
-      summary: Create a local demo account with seeded sample data
+      summary: Create a local account
       security: []
       requestBody:
         required: true
@@ -58,11 +59,12 @@ paths:
                 $ref: '#/components/schemas/TokenResponse'
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/auth/login:
     post:
       tags: [Auth]
       operationId: login
-      summary: Exchange local demo credentials for a bearer token
+      summary: Exchange local credentials for a bearer token
       security: []
       requestBody:
         required: true
@@ -79,6 +81,7 @@ paths:
                 $ref: '#/components/schemas/TokenResponse'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/workers:
     get:
       tags: [Workers]
@@ -96,6 +99,7 @@ paths:
                 $ref: '#/components/schemas/WorkerPage'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
     post:
       tags: [Workers]
       operationId: createWorker
@@ -116,6 +120,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/workers/{worker_id}:
     parameters:
       - $ref: '#/components/parameters/WorkerId'
@@ -132,6 +137,7 @@ paths:
                 $ref: '#/components/schemas/Worker'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
     patch:
       tags: [Workers]
       operationId: updateWorker
@@ -153,6 +159,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
     delete:
       tags: [Workers]
       operationId: archiveWorker
@@ -162,6 +169,7 @@ paths:
           description: Archived; no response body
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/workers/{worker_id}/runs:
     parameters:
       - $ref: '#/components/parameters/WorkerId'
@@ -183,6 +191,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/runs:
     get:
       tags: [Runs]
@@ -224,6 +233,7 @@ paths:
                 $ref: '#/components/schemas/RunPage'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/runs/{run_id}:
     parameters:
       - $ref: '#/components/parameters/RunId'
@@ -240,6 +250,7 @@ paths:
                 $ref: '#/components/schemas/Run'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/runs/{run_id}/logs:
     parameters:
       - $ref: '#/components/parameters/RunId'
@@ -265,6 +276,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/runs/{run_id}/retry:
     parameters:
       - $ref: '#/components/parameters/RunId'
@@ -286,6 +298,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/dashboard/summary:
     get:
       tags: [Dashboard]
@@ -307,6 +320,7 @@ paths:
                 $ref: '#/components/schemas/DashboardSummary'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
 components:
   securitySchemes:
     localBearer:
@@ -314,7 +328,7 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: >-
-        Local demo JWT returned by /api/v1/auth/register or /api/v1/auth/login.
+        Signed JWT returned by /api/v1/auth/register or /api/v1/auth/login.
         The backend verifies signature, issuer, audience, expiry and subject;
         ownership is derived from the verified subject.
   parameters:
@@ -382,6 +396,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     RateLimited:
       description: Worker or active-run quota exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server error with a sanitized message
       content:
         application/json:
           schema:
@@ -455,8 +475,8 @@ components:
       format: uri
       maxLength: 2048
       description: >-
-        Public HTTP(S) URL. The backend enforces the approved SSRF and egress
-        policy; URI syntax alone does not establish safety.
+        Public HTTP(S) URL. The backend must enforce the approved SSRF and
+        egress policy; URI syntax alone does not establish safety.
     LastRun:
       type: object
       additionalProperties: false

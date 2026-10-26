@@ -210,11 +210,13 @@ export function createMockClient(getUserId: () => string | null): ApiClient {
   };
 
   return {
-    async listWorkers() {
+    async listWorkers(pagination: { limit?: number; offset?: number } = {}) {
       const me = owner();
       const db = load();
       const items = db.workers.filter((w) => w.owner === me && !w.archived).sort((a, b) => b.created_at.localeCompare(a.created_at)).map((w) => publicWorker(db, w));
-      return delay({ items, total: items.length });
+      const limit = pagination.limit ?? 20;
+      const offset = pagination.offset ?? 0;
+      return delay({ items: items.slice(offset, offset + limit), total: items.length, limit, offset });
     },
     async getWorker(id) {
       const me = owner();
@@ -273,7 +275,7 @@ export function createMockClient(getUserId: () => string | null): ApiClient {
       runs.sort((a, b) => b.created_at.localeCompare(a.created_at));
       const size = filters.page_size ?? 20;
       const page = filters.page ?? 1;
-      return delay({ items: runs.slice((page - 1) * size, page * size), total: runs.length });
+      return delay({ items: runs.slice((page - 1) * size, page * size), total: runs.length, limit: size, offset: (page - 1) * size });
     },
     async getRun(id) {
       const me = owner();

@@ -26,10 +26,19 @@ class Credentials(StrictModel):
         return value
 
 
+class AuthUser(StrictModel):
+    id: str
+    email: str
+
+
 class TokenResponse(StrictModel):
     access_token: str
-    token_type: Literal["bearer"] = "bearer"
-    user: dict[str, str]
+    token_type: Literal["bearer"]
+    user: AuthUser
+
+
+class Health(StrictModel):
+    status: Literal["ok", "unavailable"]
 
 
 class WorkerCreate(StrictModel):
@@ -126,7 +135,7 @@ class RunPage(StrictModel):
 class EnqueuedRun(StrictModel):
     run_id: str
     worker_id: str
-    status: Literal["queued"] = "queued"
+    status: Literal["queued"]
     created_at: str
 
 
@@ -144,7 +153,7 @@ class RunLogPage(StrictModel):
 
 
 class DashboardSummary(StrictModel):
-    window: Literal["24h"] = "24h"
+    window: Literal["24h"]
     total: int
     succeeded: int
     failed: int

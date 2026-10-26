@@ -1,4 +1,8 @@
 // Types mirror the RunGuard v1 API contract (spec section 8).
+export interface Health {
+  status: "ok" | "unavailable";
+}
+
 export type WorkerKind = "website_monitor" | "url_summarizer";
 export type RunStatus = "queued" | "running" | "succeeded" | "failed";
 export type LogLevel = "INFO" | "WARN" | "ERROR";
@@ -58,6 +62,36 @@ export interface RunLog {
 export interface Page<T> {
   items: T[];
   total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface Credentials {
+  email: string;
+  password: string;
+}
+
+export interface AuthTokenResponse {
+  access_token: string;
+  token_type: "bearer";
+  user: { id: string; email: string };
+}
+
+export interface ErrorResponse {
+  error: { code: string; message: string; details?: Record<string, unknown> };
+  request_id: string;
+}
+
+export interface EnqueuedRun {
+  run_id: string;
+  worker_id: string;
+  status: "queued";
+  created_at: string;
+}
+
+export interface RunLogPage {
+  items: RunLog[];
+  next_after_id: number;
 }
 
 export interface DashboardSummary {
@@ -88,15 +122,15 @@ export class ApiError extends Error {
 }
 
 export interface ApiClient {
-  listWorkers(): Promise<Page<Worker>>;
+  listWorkers(pagination?: { limit?: number; offset?: number }): Promise<Page<Worker>>;
   getWorker(id: string): Promise<Worker>;
   createWorker(input: WorkerInput): Promise<Worker>;
   updateWorker(id: string, input: Pick<WorkerInput, "name" | "url">): Promise<Worker>;
   archiveWorker(id: string): Promise<void>;
-  runWorker(id: string): Promise<{ run_id: string; worker_id: string; status: RunStatus; created_at: string }>;
+  runWorker(id: string): Promise<EnqueuedRun>;
   listRuns(filters?: { worker_id?: string; status?: RunStatus; page?: number; page_size?: number }): Promise<Page<Run>>;
   getRun(id: string): Promise<Run>;
-  getRunLogs(id: string, afterId?: number): Promise<{ items: RunLog[]; next_after_id: number }>;
-  retryRun(id: string): Promise<{ run_id: string; worker_id: string; status: RunStatus; created_at: string }>;
+  getRunLogs(id: string, afterId?: number): Promise<RunLogPage>;
+  retryRun(id: string): Promise<EnqueuedRun>;
   getDashboardSummary(): Promise<DashboardSummary>;
 }

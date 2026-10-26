@@ -9,6 +9,7 @@ router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
 def token_response(request: Request, user: dict) -> TokenResponse:
     return TokenResponse(access_token=request.app.state.tokens.issue(user["id"]),
+                         token_type="bearer",
                          user={"id": user["id"], "email": user["email"]})
 
 

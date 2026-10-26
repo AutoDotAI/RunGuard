@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import TokenService
+from .models import Health
 from .routers import auth, dashboard, runs, workers
 from .store import MemoryStore, Problem
 
@@ -41,7 +42,7 @@ def create_app(store: MemoryStore | None = None, secret: str | None = None) -> F
     async def unexpected_handler(_request: Request, _exc: Exception):
         return error_response(500, "INTERNAL_ERROR", "Unexpected server error")
 
-    @app.get("/health", tags=["Health"])
+    @app.get("/health", tags=["Health"], response_model=Health)
     def health():
         return {"status": "ok"}
 
