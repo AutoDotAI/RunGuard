@@ -6,16 +6,29 @@ public Grafana deployment. No telemetry account or model provider key is
 needed. The Website Monitor smoke uses injected responses and never fetches
 its example URLs.
 
-From the repository root, configure `.env` as described in the root README,
-then start an isolated local stack on free ports 3000, 8000, and 3001:
+From the repository root, configure `.env` as described in the root README.
+`make compose-up` starts only the site at <http://localhost:3000> and API at
+<http://localhost:8000>. Add telemetry to that **same** Compose project with:
 
 ```bash
-docker compose -p rg-observe-demo -f compose.yaml -f compose.observability.yaml --profile observability up --build -d
-docker compose -p rg-observe-demo -f compose.yaml -f compose.observability.yaml --profile observability ps --all
-RUNGUARD_COMPOSE_PROJECT=rg-observe-demo python3 scripts/observability_smoke.py
+make observability-up
 ```
 
-Open <http://127.0.0.1:3001/d/runguard-journey/runguard-user-journey>.
+Enabling telemetry once may briefly recreate the API and worker to add their
+collector settings; wait for `docker compose ps` to show a healthy API before
+submitting a form. Run the smoke only on an isolated project with no user jobs:
+it briefly stops the worker. Use `make observability-down` to stop telemetry
+services while keeping the ordinary site and SQLite volume running. The
+isolated offline telemetry smoke uses `OBS_PROJECT=rg-observe-demo make
+observability-smoke` only after starting that isolated project on free ports.
+
+Open the dashboard at
+<http://localhost:3001/d/runguard-journey/runguard-user-journey> or select
+**Prometheus**, **Loki**, and **Tempo** in <http://localhost:3001/explore> for
+metrics, logs, and traces. Alertmanager is at <http://localhost:9093> and the
+local operator inbox at <http://localhost:9094>. Their raw Prometheus, Loki,
+and Tempo ports are not published separately. In remote VS Code, forward ports
+3000, 8000, 3001, and optionally 9093/9094 to your browser.
 The Grafana development image uses `admin` / `admin` by default; change
 `RUNGUARD_GRAFANA_PASSWORD` in the Compose environment if the host is shared.
 The UI binds only to `127.0.0.1`; the OTLP collector and backend receiver have
@@ -51,10 +64,11 @@ Prepare a local `.env` with `RUNGUARD_AUTH_SECRET` of at least 32 bytes, then
 run from the repository root:
 
 ```bash
-export RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT=rg-demo-stall-1
-docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml --profile observability up --build -d
+export RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT=rg-demo-stall-1 RUNGUARD_ALLOWED_HOSTS=example.com
+export COMPOSE_PROJECT_NAME="$RUNGUARD_DEMO_PROJECT"
+docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability up --build -d
 python3 scripts/demo_stall_smoke.py
-docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml --profile observability down
+docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability down
 ```
 
 The script registers two fresh local accounts through the real API. It pauses
@@ -101,11 +115,11 @@ Use a fresh isolated Compose project with `.env` configured. From the repo
 root, run:
 
 ```bash
-export RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT=rg-demo-responder-1
+export RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT=rg-demo-responder-1 RUNGUARD_ALLOWED_HOSTS=example.com
 export COMPOSE_PROJECT_NAME="$RUNGUARD_DEMO_PROJECT"
-docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml -f compose.responder.yaml --profile observability --profile responder up --build -d
+docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability --profile responder up --build -d
 python3 scripts/responder_smoke.py
-docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml -f compose.responder.yaml --profile observability --profile responder down
+docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability --profile responder down
 ```
 
 The smoke creates its own account and fixture, waits for the real stalled
@@ -184,10 +198,10 @@ severity, and request/run/trace IDs. They do not include user emails, tokens,
 passwords, URL query strings, page bodies, model prompts or API keys. The
 existing authenticated run-log API remains separate from operator telemetry.
 
-Stop the profile without deleting the application SQLite volume:
+Stop only telemetry services without deleting the site or SQLite volume:
 
 ```bash
-docker compose -p rg-observe-demo -f compose.yaml -f compose.observability.yaml --profile observability down
+make observability-down
 ```
 
 Do not use `down -v` when you want to keep accounts and run history. The

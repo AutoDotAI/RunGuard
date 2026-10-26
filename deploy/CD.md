@@ -52,7 +52,8 @@ host first. This repository does not provision a host or a domain.
    a site was deployed.
 
 The workflow copies only tracked Compose/scripts to the selected host. It does
-not copy `.env`, SQLite, or other secrets. `compose.cd.yaml` removes build
+not copy `.env`, SQLite, or other secrets. The host generates a temporary
+digest-only override from `deploy/compose_overrides.py`; it removes build
 contexts, so deployment pulls exactly the recorded digests. The host script
 waits for migrations and service health, then checks HTTPS, the login page,
 authenticated worker list, and dashboard. An existing account with the wrong

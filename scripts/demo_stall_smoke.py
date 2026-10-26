@@ -19,7 +19,7 @@ API = os.environ.get("RUNGUARD_SMOKE_API", "http://127.0.0.1:8000")
 GRAFANA = os.environ.get("RUNGUARD_SMOKE_GRAFANA", "http://127.0.0.1:3001")
 INBOX = os.environ.get("RUNGUARD_SMOKE_INBOX", "http://127.0.0.1:9094")
 COMPOSE = ["docker", "compose", "-p", PROJECT, "-f", "compose.yaml",
-           "-f", "compose.observability.yaml", "-f", "compose.demo.yaml",
+           "-f", "compose.observability.yaml",
            "--profile", "observability"]
 
 

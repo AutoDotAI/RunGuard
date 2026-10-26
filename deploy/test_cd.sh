@@ -8,15 +8,17 @@ cd "$repo_dir"
 uv run --no-project --with pyyaml==6.0.2 python -m unittest discover -s deploy/tests -p 'test_*.py' -v
 uv run --no-project --with pyyaml==6.0.2 python deploy/validate_workflows.py .github/workflows/ci.yml .github/workflows/promote.yml
 bash -n deploy/ssh_deploy.sh deploy/remote_deploy.sh deploy/remote_rollback.sh deploy/rehearse_rollback.sh
-python3 -m py_compile deploy/release.py deploy/state.py deploy/backup.py deploy/check_compatibility.py deploy/smoke.py deploy/validate_workflows.py
+python3 -m py_compile deploy/release.py deploy/state.py deploy/backup.py deploy/check_compatibility.py deploy/smoke.py deploy/validate_workflows.py deploy/compose_overrides.py
 envfile=$(mktemp)
 config=$(mktemp)
-trap 'rm -f "$envfile" "$config"' EXIT INT TERM
+override=$(mktemp)
+trap 'rm -f "$envfile" "$config" "$override"' EXIT INT TERM
 printf 'RUNGUARD_PUBLIC_HOST=demo.example.org\nRUNGUARD_ALLOWED_HOSTS=example.com\nRUNGUARD_AUTH_SECRET=%s\n' "$(openssl rand -hex 32)" > "$envfile"
 export RUNGUARD_API_IMAGE="ghcr.io/autodotai/runguard-api@sha256:$(printf '1%.0s' $(seq 1 64))"
 export RUNGUARD_WEB_IMAGE="ghcr.io/autodotai/runguard-web@sha256:$(printf '2%.0s' $(seq 1 64))"
 export RUNGUARD_EGRESS_IMAGE="ghcr.io/autodotai/runguard-egress@sha256:$(printf '3%.0s' $(seq 1 64))"
-docker compose --project-name runguard-cd-check --env-file "$envfile" -f compose.prod.yaml -f compose.cd.yaml config --format json > "$config"
+python3 deploy/compose_overrides.py release > "$override"
+docker compose --project-name runguard-cd-check --env-file "$envfile" -f compose.prod.yaml -f "$override" config --format json > "$config"
 python3 - "$config" <<'PY'
 import json, sys
 config = json.load(open(sys.argv[1]))

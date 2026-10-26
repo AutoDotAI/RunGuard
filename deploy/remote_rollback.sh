@@ -57,7 +57,10 @@ api_image="ghcr.io/autodotai/runguard-api@${fields[1]}"
 web_image="ghcr.io/autodotai/runguard-web@${fields[2]}"
 egress_image="ghcr.io/autodotai/runguard-egress@${fields[3]}"
 export RUNGUARD_API_IMAGE="$api_image" RUNGUARD_WEB_IMAGE="$web_image" RUNGUARD_EGRESS_IMAGE="$egress_image"
-compose=(docker compose --project-name "runguard-$environment" --env-file "$envfile" -f compose.prod.yaml -f compose.cd.yaml)
+override=$(mktemp)
+trap 'rm -f "$override"' EXIT
+python3 deploy/compose_overrides.py release > "$override"
+compose=(docker compose --project-name "runguard-$environment" --env-file "$envfile" -f compose.prod.yaml -f "$override")
 "${compose[@]}" config --quiet
 docker pull "$api_image" >/dev/null
 docker pull "$web_image" >/dev/null

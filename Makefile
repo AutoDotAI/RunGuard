@@ -5,7 +5,7 @@ UV ?= uv
 NPM ?= npm
 PYTHON ?= python3
 DOCKER ?= docker
-OBS_PROJECT ?= rg-observe-demo
+OBS_PROJECT ?= runguard
 DEMO_PROJECT ?=
 DEMO_MODE ?=
 INCIDENT_ID ?=
@@ -14,8 +14,8 @@ INCIDENT_PROVIDER ?= codex
 export OBS_PROJECT DEMO_PROJECT DEMO_MODE INCIDENT_ID OWNER_USER_ID INCIDENT_PROVIDER
 
 OBS_COMPOSE = $(DOCKER) compose -p "$$OBS_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability
-STALL_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml --profile observability
-RESPONDER_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml -f compose.responder.yaml --profile observability --profile responder
+STALL_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability
+RESPONDER_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability --profile responder
 
 .PHONY: help install install-backend install-frontend test test-backend test-frontend typecheck build build-frontend build-images check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry cd-check rollback-rehearsal
 
@@ -65,36 +65,36 @@ compose-config: ## Validate local Compose configuration (.env with stable secret
 compose-up: ## Build/start local API, worker and web; retain SQLite volume
 	$(DOCKER) compose up --build -d
 compose-status: ## Show local Compose service status
-	$(DOCKER) compose ps --all
+	$(DOCKER) compose -p runguard -f compose.yaml -f compose.observability.yaml --profile observability ps --all
 compose-logs: ## Show last 50 API, worker and web log lines
 	$(DOCKER) compose logs --tail=50 api worker web
 compose-down: ## Stop local Compose stack without deleting SQLite volume
-	$(DOCKER) compose down
+	$(DOCKER) compose -p runguard -f compose.yaml -f compose.observability.yaml --profile observability down
 compose-smoke: ## Run API-to-worker smoke (uses example.com outbound HTTPS)
 	$(PYTHON) scripts/compose_smoke.py
 
-observability-up: ## Start loopback Grafana/collector and app for OBS_PROJECT
+observability-up: ## Add loopback Grafana/collector to the existing local app
 	$(OBS_COMPOSE) up --build -d
 observability-smoke: ## Run offline telemetry smoke for OBS_PROJECT
 	RUNGUARD_COMPOSE_PROJECT="$$OBS_PROJECT" $(PYTHON) scripts/observability_smoke.py
-observability-down: ## Stop observability stack; retain application and telemetry volumes
-	$(OBS_COMPOSE) down
+observability-down: ## Stop telemetry services; keep the local app and volumes running
+	$(OBS_COMPOSE) stop collector observability alertmanager operator-inbox
 
 guard-demo: ## Validate DEMO_MODE=true and a dedicated DEMO_PROJECT=rg-demo-<name>
 	@test "$$DEMO_MODE" = true || { echo 'Set DEMO_MODE=true for a local demo only' >&2; exit 2; }
 	@printf '%s\n' "$$DEMO_PROJECT" | grep -Eq '^rg-demo-[a-z0-9]([a-z0-9-]*[a-z0-9])?$$' || { echo 'Set DEMO_PROJECT=rg-demo-<safe-name>' >&2; exit 2; }
 demo-stall-up: guard-demo ## Start isolated paused-worker drill stack (requires .env)
-	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(STALL_COMPOSE) up --build -d
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(STALL_COMPOSE) up --build -d
 demo-stall-smoke: guard-demo ## Run gated >60s stalled-worker alert drill
-	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(PYTHON) scripts/demo_stall_smoke.py
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(PYTHON) scripts/demo_stall_smoke.py
 demo-stall-down: guard-demo ## Stop gated drill stack without deleting its volume
-	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(STALL_COMPOSE) down
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(STALL_COMPOSE) down
 responder-up: guard-demo ## Start isolated responder drill stack (requires .env)
-	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(RESPONDER_COMPOSE) up --build -d
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(RESPONDER_COMPOSE) up --build -d
 responder-smoke: guard-demo ## Run gated alert-to-responder-to-recovery drill
-	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(PYTHON) scripts/responder_smoke.py
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(PYTHON) scripts/responder_smoke.py
 responder-down: guard-demo ## Stop responder drill stack without deleting its volume
-	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(RESPONDER_COMPOSE) down
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(RESPONDER_COMPOSE) down
 
 guard-incident: ## Require an existing open INCIDENT_ID and OWNER_USER_ID; provider codex/claude
 	@test -n "$$INCIDENT_ID" && test -n "$$OWNER_USER_ID" || { echo 'Set INCIDENT_ID and OWNER_USER_ID for an existing open incident' >&2; exit 2; }

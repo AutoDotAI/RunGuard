@@ -14,7 +14,9 @@ mkdir -m 700 "$state" "$tempdir/backups"
 password=$(openssl rand -hex 20)
 email="rehearsal-$$@example.invalid"
 printf 'RUNGUARD_PUBLIC_HOST=demo.example.org\nRUNGUARD_ALLOWED_HOSTS=example.com\nRUNGUARD_AUTH_SECRET=%s\n' "$(openssl rand -hex 32)" > "$envfile"
-compose=(docker compose --project-name "$project" --env-file "$envfile" -f compose.prod.yaml -f compose.rollback-rehearsal.yaml)
+override="$tempdir/rehearsal-compose.yaml"
+python3 deploy/compose_overrides.py rehearsal > "$override"
+compose=(docker compose --project-name "$project" --env-file "$envfile" -f compose.prod.yaml -f "$override")
 cleanup() {
     "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
     for kind in api web egress; do
