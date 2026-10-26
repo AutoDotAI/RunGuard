@@ -15,6 +15,7 @@ from app.models import MonitorResult, SummarizerResult
 from app.store import now
 from .types import HandlerOutcome, RunSnapshot
 from .website_monitor import monitor
+from .url_summarizer import summarize
 
 
 Handler = Callable[[RunSnapshot], HandlerOutcome]
@@ -40,7 +41,11 @@ class WorkerRunner:
         if path == ":memory:":
             raise ValueError("Worker requires a persistent SQLite file")
         self.lock_path = Path(str(Path(path).resolve()) + ".worker.lock")
-        self.handlers = {"website_monitor": monitor, **(handlers or {})}
+        self.handlers = {"website_monitor": monitor,
+                         "url_summarizer": lambda snapshot: summarize(
+                             snapshot, log=lambda event, message, level:
+                             self._monitor_step(snapshot.id, event, message, level)),
+                         **(handlers or {})}
         self._lock_file = None
 
     def __enter__(self) -> "WorkerRunner":

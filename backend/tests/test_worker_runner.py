@@ -146,18 +146,24 @@ def test_oldest_first_one_active_execution_and_sanitized_failure(tmp_path):
             assert session.get(RunRecord, second).retry_of_run_id is None
 
 
-def test_missing_summarizer_handler_fails_visibly_without_fabricated_result(tmp_path):
+def test_unconfigured_summarizer_fails_visibly_without_fabricated_result(tmp_path, monkeypatch):
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     path = tmp_path / "app.db"
     with setup_client(path) as client:
         token = register(client)
         _, summarizer = enqueue(client, token, "Summarizer", "url_summarizer")
+        from app import outbound
+        monkeypatch.setattr(outbound, "fetch", lambda _url: outbound.FetchResponse(
+            200, {"Content-Type": "text/html"},
+            b"<p>A readable report describes the incident, timeline, community response, "
+            b"and mitigation work in sufficient factual detail for a summary.</p>"))
         with WorkerRunner(f"sqlite:///{path}") as runner:
             assert runner.run_once()
         final = run(client, token, summarizer)
         assert final["status"] == "failed"
         assert final["result"] is None
-        assert final["error"]["code"] == "HANDLER_UNAVAILABLE"
-        assert "HANDLER_UNAVAILABLE" in [item["event"] for item in logs(client, token, summarizer)["items"]]
+        assert final["error"]["code"] == "LLM_ERROR"
+        assert "LLM_ERROR" in [item["event"] for item in logs(client, token, summarizer)["items"]]
 
 
 def test_cli_process_consumes_durable_queue_after_api_restart(tmp_path):
@@ -166,15 +172,18 @@ def test_cli_process_consumes_durable_queue_after_api_restart(tmp_path):
         token = register(client)
         _, run_id = enqueue(client, token, "Separate process", "url_summarizer")
         assert run(client, token, run_id)["status"] == "queued"
+        with client.app.state.users.sessions() as session:
+            session.get(RunRecord, run_id).url_snapshot = "http://localhost/"
+            session.commit()
     completed = subprocess.run(
         [sys.executable, "-m", "app.workers.runner", "--once"],
-        env={**os.environ, "RUNGUARD_DATABASE_URL": f"sqlite:///{path}"},
+        env={**os.environ, "RUNGUARD_DATABASE_URL": f"sqlite:///{path}", "LLM_MODEL": ""},
         capture_output=True, text=True, timeout=15, check=False)
     assert completed.returncode == 0, completed.stderr
     with setup_client(path) as client:
         final = run(client, token, run_id)
         assert final["status"] == "failed"
-        assert final["error"]["code"] == "HANDLER_UNAVAILABLE"
+    assert final["error"]["code"] == "URL_INVALID"
 
 
 def test_crash_reconciliation_fails_running_once_and_keeps_queued(tmp_path):
