@@ -82,12 +82,20 @@ def main() -> None:
             for service in ("api", "worker"):
                 dc("run", "--rm", "--no-deps", service, "python", "-c", query)
 
+            dc("run", "--rm", "--no-deps", "migrate")
+
             host_url = (f"postgresql+psycopg://runguard:{password}@127.0.0.1:"
                         f"{env['RUNGUARD_POSTGRES_PORT']}/runguard")
             host_env = {**env, "RUNGUARD_DATABASE_URL": host_url}
-            run(["uv", "run", "--locked", "python", "-c", query],
+            host_worker_probe = (
+                "from app.workers.runner import WorkerRunner\n"
+                "with WorkerRunner(capability_reporter=lambda: {'providers': []}) as worker:\n"
+                "    assert worker.db.engine.url.host == '127.0.0.1'\n"
+                "    assert worker.claim_oldest() is None\n"
+            )
+            run(["uv", "run", "--locked", "python", "-c", host_worker_probe],
                 env=host_env, capture=True, cwd=ROOT / "backend")
-            print("PASS: API and worker image reach PostgreSQL; host route is loopback only")
+            print("PASS: API and worker image reach PostgreSQL; host worker uses loopback only")
         finally:
             dc("down", "--volumes")
 
