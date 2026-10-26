@@ -7,6 +7,20 @@ case "$environment" in development|production) ;; *) echo 'Invalid environment' 
 envfile=".env.$environment"
 test -f "$envfile" || { echo "Missing host-local $envfile" >&2; exit 2; }
 test -f .cd-security-approved || { echo 'Host egress/HTTPS gate has not been approved' >&2; exit 2; }
+set -a
+. "./$envfile"
+set +a
+python3 - <<'PY'
+import os
+
+required = ("RUNGUARD_PUBLIC_HOST", "RUNGUARD_ALLOWED_HOSTS", "RUNGUARD_SMOKE_EMAIL")
+if any(not os.environ.get(name) for name in required):
+    raise SystemExit("Host deployment settings or smoke account are missing")
+if len(os.environ.get("RUNGUARD_AUTH_SECRET", "").encode()) < 32:
+    raise SystemExit("Host signing secret is shorter than 32 bytes")
+if len(os.environ.get("RUNGUARD_SMOKE_PASSWORD", "")) < 8:
+    raise SystemExit("Host smoke password is missing or too short")
+PY
 mkdir -p state backups
 chmod 700 state backups
 history=$(python3 deploy/state.py history --state state --environment "$environment")
@@ -53,9 +67,6 @@ if ! "${compose[@]}" up -d --no-build --wait migrate api egress_guard worker web
     echo 'Rollback service health failed; previous successful records retained' >&2
     exit 1
 fi
-set -a
-. "./$envfile"
-set +a
 if ! python3 deploy/smoke.py; then
     python3 deploy/state.py rollback-result --state state --environment "$environment" --result failed
     echo 'Rollback authenticated smoke failed; previous successful records retained' >&2

@@ -137,7 +137,10 @@ class RollbackTests(unittest.TestCase):
                 for filename in ("remote_rollback.sh", "state.py", "release.py"):
                     shutil.copy2(ROOT / filename, deploy_dir / filename)
                 (deploy_dir / "smoke.py").write_text("raise SystemExit(1)\n")
-                (host / ".env.development").write_text("RUNGUARD_PUBLIC_HOST=demo.example.org\n")
+                (host / ".env.development").write_text(
+                    "RUNGUARD_PUBLIC_HOST=demo.example.org\nRUNGUARD_ALLOWED_HOSTS=example.com\n"
+                    "RUNGUARD_AUTH_SECRET=" + "s" * 64 + "\n"
+                    "RUNGUARD_SMOKE_EMAIL=smoke@example.org\nRUNGUARD_SMOKE_PASSWORD=SmokePassword123!\n")
                 (host / ".cd-security-approved").write_text("approved\n")
                 state = host / "state"
                 record_deploy(state, record(1))
@@ -170,6 +173,29 @@ class RollbackTests(unittest.TestCase):
                 self.assertEqual(read_record(state / "previous.json", "development")["commit"], record(1)["commit"])
                 self.assertEqual(json.loads((state / "latest-failure.json").read_text())["result"], "failed")
                 self.assertIn("compose", log.read_text())
+
+    def test_short_host_secret_stops_before_docker(self):
+        host = self.root / "short-secret"
+        (host / "deploy").mkdir(parents=True)
+        shutil.copy2(ROOT / "remote_rollback.sh", host / "deploy" / "remote_rollback.sh")
+        (host / ".cd-security-approved").write_text("approved\n")
+        (host / ".env.development").write_text(
+            "RUNGUARD_PUBLIC_HOST=demo.example.org\nRUNGUARD_ALLOWED_HOSTS=example.com\n"
+            "RUNGUARD_AUTH_SECRET=too-short\nRUNGUARD_SMOKE_EMAIL=smoke@example.org\n"
+            "RUNGUARD_SMOKE_PASSWORD=SmokePassword123!\n")
+        bin_dir = host / "bin"
+        bin_dir.mkdir()
+        marker = host / "docker-called"
+        fake = bin_dir / "docker"
+        fake.write_text("#!/bin/sh\ntouch \"$DOCKER_MARKER\"\n")
+        fake.chmod(0o755)
+        env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+               "DOCKER_MARKER": str(marker)}
+        result = subprocess.run(["bash", "deploy/remote_rollback.sh", "development"],
+                                cwd=host, env=env, capture_output=True, text=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("shorter than 32 bytes", result.stderr)
+        self.assertFalse(marker.exists())
 
 
 if __name__ == "__main__":
