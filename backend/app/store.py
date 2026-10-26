@@ -217,16 +217,14 @@ class PersistentStore:
 
     def run_worker(self, owner: str, worker_id: str) -> EnqueuedRun:
         with self.lock, self.users.sessions() as session:
-            # Claim SQLite's only writer slot before reading either quota. A
-            # second API process waits, then observes the committed first run.
-            session.execute(text("BEGIN IMMEDIATE"))
+            self._lock_enqueue_owner(session, owner)
             worker = self._owned_worker(session, owner, worker_id)
             return self._enqueue(session, owner, worker, worker.url, None,
                                  worker.name, worker.config_json, worker.kind)
 
     def retry_run(self, owner: str, run_id: str) -> EnqueuedRun:
         with self.lock, self.users.sessions() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
+            self._lock_enqueue_owner(session, owner)
             original = self._owned_run(session, owner, run_id)
             if original.status != "failed":
                 raise Problem(409, "INVALID_RETRY_STATE", "Only failed runs can be retried")
@@ -236,6 +234,20 @@ class PersistentStore:
             return self._enqueue(session, owner, worker, original.url_snapshot,
                                  run_id, original.worker_name_snapshot,
                                  original.config_snapshot_json, original.kind)
+
+    @staticmethod
+    def _lock_enqueue_owner(session: Session, owner: str) -> None:
+        """Serialize a user's quota checks across API processes.
+
+        The active-run partial unique index remains the final guard for a
+        duplicate worker run. Locking the owner row also makes the 10-run
+        limit atomic when two different workers are enqueued concurrently.
+        """
+        if session.bind.dialect.name == "postgresql":
+            session.scalar(select(UserRecord.id).where(UserRecord.id == owner)
+                           .with_for_update())
+        else:
+            session.execute(text("BEGIN IMMEDIATE"))
 
     def list_runs(self, owner: str, worker_id: str | None, status: str | None,
                   page: int, size: int) -> RunPage:

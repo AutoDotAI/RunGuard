@@ -4,9 +4,12 @@ import argparse
 import fcntl
 import json
 import os
+import shutil
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
+from threading import Event, Lock, Thread
 from typing import Callable, Mapping
 
 from sqlalchemy import select, text
@@ -18,6 +21,7 @@ from app.run_logs import new_run_log, safe_event
 from app.store import now
 from app import observability
 from .types import HandlerOutcome, RunSnapshot
+from .host_model import _cli_environment
 from .website_monitor import monitor
 from .url_summarizer import summarize
 
@@ -37,43 +41,122 @@ class WorkerAlreadyRunning(RuntimeError):
     pass
 
 
+# This lock serializes startup reconciliation and makes ownership observable
+# across processes. Its connection stays checked out for the worker lifetime.
+POSTGRES_WORKER_LOCK_KEY = 0x52754E4775617264
+
+
+def _worker_capabilities() -> dict[str, list[str]]:
+    """Publish only provider names that this process can invoke.
+
+    Authentication status commands never request a model response and their
+    output is discarded. No secret, account name, or filesystem path enters
+    the database heartbeat.
+    """
+    if os.environ.get("RUNGUARD_MODEL_PROVIDER", "codex").strip().lower() == "disabled":
+        return {"providers": []}
+    providers = []
+    for name, status_command in (
+        ("codex", ["codex", "login", "status"]),
+        ("claude", ["claude", "auth", "status"]),
+    ):
+        if shutil.which(name) is None:
+            continue
+        try:
+            result = subprocess.run(status_command, env=_cli_environment(),
+                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL, timeout=3, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode == 0:
+            providers.append(name)
+    configured_models = (os.environ.get("RUNGUARD_LITELLM_MODELS", "").strip()
+                         or os.environ.get("LLM_MODEL", "").strip())
+    if configured_models and any(os.environ.get(key) for key in (
+            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY",
+            "GOOGLE_API_KEY", "AZURE_API_KEY")):
+        providers.append("litellm")
+    return {"providers": providers}
+
+
 class WorkerRunner:
     def __init__(self, database_url: str | None = None,
-                 handlers: Mapping[str, Handler] | None = None):
+                 handlers: Mapping[str, Handler] | None = None,
+                 capability_reporter: Callable[[], dict[str, list[str]]] | None = None):
         self.db = UserRepository(database_url)
-        path = self.db.database_url.removeprefix("sqlite:///")
-        if path == ":memory:":
-            raise ValueError("Worker requires a persistent SQLite file")
-        self.lock_path = Path(str(Path(path).resolve()) + ".worker.lock")
+        self._postgres = self.db.engine.dialect.name == "postgresql"
+        if self._postgres:
+            self.lock_path = None
+        else:
+            path = self.db.database_url.removeprefix("sqlite:///")
+            if path == ":memory:":
+                raise ValueError("Worker requires a persistent SQLite file")
+            self.lock_path = Path(str(Path(path).resolve()) + ".worker.lock")
         self.handlers = {"website_monitor": monitor,
                          "url_summarizer": lambda snapshot: summarize(
                              snapshot, log=lambda event, message, level:
                              self._monitor_step(snapshot.id, event, message, level)),
                          **(handlers or {})}
         self._lock_file = None
+        self._lock_connection = None
+        self._lock_backend_pid = None
+        self._heartbeat_mutex = Lock()
+        self._capability_reporter = capability_reporter or _worker_capabilities
+        self._heartbeat_stop = Event()
+        self._heartbeat_thread = None
 
     def __enter__(self) -> "WorkerRunner":
-        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock_file = self.lock_path.open("a+")
-        try:
-            fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            self._lock_file.close()
-            self._lock_file = None
-            self.db.close()
-            raise WorkerAlreadyRunning("Another worker owns this SQLite queue") from None
+        if self._postgres:
+            self._lock_connection = self.db.engine.connect()
+            acquired = self._lock_connection.scalar(
+                text("SELECT pg_try_advisory_lock(:key)"), {"key": POSTGRES_WORKER_LOCK_KEY})
+            self._lock_connection.commit()
+            if not acquired:
+                self._lock_connection.close()
+                self._lock_connection = None
+                self.db.close()
+                raise WorkerAlreadyRunning("Another worker owns this PostgreSQL queue")
+            self._lock_backend_pid = self._lock_connection.scalar(text("SELECT pg_backend_pid()"))
+            self._lock_connection.commit()
+        else:
+            self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+            self._lock_file = self.lock_path.open("a+")
+            try:
+                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                self._lock_file.close()
+                self._lock_file = None
+                self.db.close()
+                raise WorkerAlreadyRunning("Another worker owns this SQLite queue") from None
         try:
             self.db.migrate()
             observability.configure("runguard-worker", self.db.database_url)
             self._touch_heartbeat()
             observability.emit("WORKER_STARTED", service="runguard-worker")
             self.reconcile_interrupted()
+            if self._postgres:
+                self._heartbeat_stop.clear()
+                self._heartbeat_thread = Thread(target=self._heartbeat_loop, daemon=True)
+                self._heartbeat_thread.start()
         except BaseException:
             self.__exit__(None, None, None)
             raise
         return self
 
     def __exit__(self, *_exc: object) -> None:
+        self._heartbeat_stop.set()
+        if self._heartbeat_thread is not None:
+            self._heartbeat_thread.join(timeout=6)
+            self._heartbeat_thread = None
+        if self._lock_connection is not None:
+            try:
+                self._lock_connection.execute(
+                    text("SELECT pg_advisory_unlock(:key)"), {"key": POSTGRES_WORKER_LOCK_KEY})
+                self._lock_connection.commit()
+            finally:
+                self._lock_connection.close()
+                self._lock_connection = None
+                self._lock_backend_pid = None
         if self._lock_file is not None:
             fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
             self._lock_file.close()
@@ -81,12 +164,38 @@ class WorkerRunner:
         self.db.close()
 
     def _require_lock(self) -> None:
-        if self._lock_file is None:
+        if self._lock_file is None and self._lock_connection is None:
             raise RuntimeError("WorkerRunner must be entered before processing")
 
     def _touch_heartbeat(self) -> None:
         self._require_lock()
-        os.utime(self.lock_path, None)
+        if self._postgres:
+            with self._heartbeat_mutex:
+                backend_pid = self._lock_connection.scalar(text("SELECT pg_backend_pid()"))
+                self._lock_connection.commit()
+                if backend_pid != self._lock_backend_pid:
+                    raise RuntimeError("PostgreSQL worker advisory lock was lost")
+                capabilities = self._capability_reporter()
+                with self.db.sessions() as session:
+                    session.execute(text("INSERT INTO worker_heartbeat "
+                                         "(id, last_seen_at, capabilities_json) "
+                                         "VALUES (1, :seen, :capabilities) ON CONFLICT (id) "
+                                         "DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at, "
+                                         "capabilities_json = EXCLUDED.capabilities_json"),
+                                    {"seen": now(), "capabilities": json.dumps(capabilities)})
+                    session.commit()
+        else:
+            os.utime(self.lock_path, None)
+
+    def _heartbeat_loop(self) -> None:
+        while not self._heartbeat_stop.wait(5):
+            try:
+                self._touch_heartbeat()
+            except Exception:
+                # A lost database connection must stop this worker before it
+                # can claim more work. poll/run_once checks this sentinel.
+                self._heartbeat_stop.set()
+                return
 
     @staticmethod
     def _log(session, run: RunRecord, timestamp: str, level: str,
@@ -97,8 +206,12 @@ class WorkerRunner:
     def reconcile_interrupted(self) -> int:
         self._require_lock()
         with self.db.sessions() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
-            runs = session.scalars(select(RunRecord).where(RunRecord.status == "running")).all()
+            if not self._postgres:
+                session.execute(text("BEGIN IMMEDIATE"))
+            query = select(RunRecord).where(RunRecord.status == "running")
+            if self._postgres:
+                query = query.with_for_update()
+            runs = session.scalars(query).all()
             for run in runs:
                 finished = now()
                 run.status = "failed"
@@ -121,15 +234,21 @@ class WorkerRunner:
 
     def claim_oldest(self, allowed_run_id: str | None = None) -> RunSnapshot | None:
         self._require_lock()
+        if self._postgres and self._heartbeat_stop.is_set():
+            raise RuntimeError("PostgreSQL worker heartbeat failed")
         self._touch_heartbeat()
         with self.db.sessions() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
+            if not self._postgres:
+                session.execute(text("BEGIN IMMEDIATE"))
             # A write lock protects both the select and state change from other writers.
             conditions = [RunRecord.status == "queued"]
             if allowed_run_id is not None:
                 conditions.append(RunRecord.id == allowed_run_id)
-            run = session.scalar(select(RunRecord).where(*conditions)
-                                 .order_by(RunRecord.created_at, RunRecord.id).limit(1))
+            query = select(RunRecord).where(*conditions).order_by(
+                RunRecord.created_at, RunRecord.id).limit(1)
+            if self._postgres:
+                query = query.with_for_update(skip_locked=True)
+            run = session.scalar(query)
             if run is None:
                 session.commit()
                 return None
@@ -152,8 +271,12 @@ class WorkerRunner:
     def _finish(self, run_id: str, outcome: HandlerOutcome | None,
                 error_code: str | None = None, error_message: str | None = None) -> bool:
         with observability.tracer().start_as_current_span("db.result"), self.db.sessions() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
-            run = session.get(RunRecord, run_id)
+            if not self._postgres:
+                session.execute(text("BEGIN IMMEDIATE"))
+            query = select(RunRecord).where(RunRecord.id == run_id)
+            if self._postgres:
+                query = query.with_for_update()
+            run = session.scalar(query)
             if run is None or run.status != "running":
                 session.commit()
                 return False
@@ -237,12 +360,14 @@ class WorkerRunner:
 
     def poll(self, interval_seconds: float = 1.0) -> None:
         while True:
+            if self._postgres and self._heartbeat_stop.is_set():
+                raise RuntimeError("PostgreSQL worker heartbeat failed")
             if not self.run_once():
                 time.sleep(interval_seconds)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="RunGuard SQLite queue worker")
+    parser = argparse.ArgumentParser(description="RunGuard queue worker")
     parser.add_argument("--once", action="store_true", help="process at most one queued run")
     args = parser.parse_args()
     try:

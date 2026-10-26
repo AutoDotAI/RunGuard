@@ -57,7 +57,7 @@ def test_migration_normalization_hashes_and_restart(tmp_path):
         assert user[2].startswith("pbkdf2_sha256$310000$")
         assert PASSWORD not in user[2]
         assert user[3].endswith("Z")
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0006_incident_analysis"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0007_worker_heartbeat"
 
     with TestClient(app_for(path)) as restarted:
         login = restarted.post("/api/v1/auth/login", json={"email": "Alice@Example.com", "password": PASSWORD})

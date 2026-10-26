@@ -47,7 +47,7 @@ def test_fresh_postgres_alembic_schema_constraints_and_bigint_cursor(postgres_sc
     try:
         with engine.connect() as connection:
             assert connection.scalar(text("SELECT current_schema()")) == schema
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0006_incident_analysis"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0007_worker_heartbeat"
             assert connection.scalar(text("""
                 SELECT data_type FROM information_schema.columns
                 WHERE table_schema = :schema AND table_name = 'run_logs' AND column_name = 'id'
