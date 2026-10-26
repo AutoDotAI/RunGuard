@@ -35,3 +35,13 @@ curl -sS -X POST http://127.0.0.1:8000/api/v1/auth/register \
 ```
 
 Run `cd backend && uv run pytest -q` for isolated tests. The worker tests use temporary SQLite files and injected fetch/model clients, without external requests or model keys. API documentation is at `http://127.0.0.1:8000/docs`; the contract is in repository-root `openapi.yaml`.
+
+To run the complete offline API → SQLite → worker integration journeys from a fresh checkout:
+
+```bash
+cd backend
+uv sync --extra test
+uv run pytest -q tests/integration
+```
+
+Each integration test migrates its own temporary SQLite file. It fakes only outbound website responses and model completions; no live website, model key, or external auth project is needed.
