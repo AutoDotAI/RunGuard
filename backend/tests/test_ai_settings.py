@@ -62,6 +62,10 @@ def test_settings_validation_unavailable_and_isolation_after_restart(tmp_path, m
         response = client.put("/api/v1/ai/settings", json=invalid, headers=_headers(first))
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+        wrong_model = {"provider_path": "backend_cli", "provider": "codex", "model": "unlisted-model"}
+        response = client.put("/api/v1/ai/settings", json=wrong_model, headers=_headers(first))
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "VALIDATION_ERROR"
         valid = {"provider_path": "backend_cli", "provider": "claude", "model": "default"}
         response = client.put("/api/v1/ai/settings", json=valid, headers=_headers(first))
         assert response.status_code == 409
