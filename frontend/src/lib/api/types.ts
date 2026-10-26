@@ -123,6 +123,40 @@ export interface AlertPage {
   total: number;
 }
 
+export type AiProviderPath = "backend_cli" | "api";
+export type AiProviderId = "codex" | "claude" | "litellm";
+
+export interface AiModel {
+  id: string;
+  label: string;
+}
+
+export interface AiProvider {
+  provider_path: AiProviderPath;
+  provider: AiProviderId;
+  label: string;
+  available: boolean;
+  unavailable_reason: string | null;
+  models: AiModel[];
+}
+
+export interface AiProviderCatalog {
+  providers: AiProvider[];
+}
+
+export interface AiSettingsInput {
+  provider_path: AiProviderPath;
+  provider: AiProviderId;
+  model: string;
+}
+
+export interface AiSettings {
+  provider_path: AiProviderPath;
+  provider: AiProviderId;
+  model: string;
+  available: boolean;
+}
+
 export interface WorkerInput {
   name: string;
   kind: WorkerKind;
@@ -141,6 +175,9 @@ export class ApiError extends Error {
 }
 
 export interface ApiClient {
+  getAiProviders(): Promise<AiProviderCatalog>;
+  getAiSettings(): Promise<AiSettings>;
+  updateAiSettings(input: AiSettingsInput): Promise<AiSettings>;
   listWorkers(pagination?: { limit?: number; offset?: number }): Promise<Page<Worker>>;
   getWorker(id: string): Promise<Worker>;
   createWorker(input: WorkerInput): Promise<Worker>;

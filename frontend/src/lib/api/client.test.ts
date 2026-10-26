@@ -41,6 +41,36 @@ afterEach(() => {
 });
 
 describe("FastAPI data client", () => {
+  it("loads AI catalog and settings with a bearer token and sends only the selected provider/model", async () => {
+    await signIn();
+    const catalog = { providers: [{
+      provider_path: "backend_cli", provider: "codex", label: "Codex CLI", available: false,
+      unavailable_reason: "Host worker is not connected.", models: [{ id: "default", label: "CLI default model" }],
+    }] };
+    const settings = { provider_path: "backend_cli", provider: "codex", model: "default", available: false };
+    const saved = { ...settings, available: true };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json(200, catalog))
+      .mockResolvedValueOnce(json(200, settings))
+      .mockResolvedValueOnce(json(200, saved));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await api.getAiProviders()).toEqual(catalog);
+    expect(await api.getAiSettings()).toEqual(settings);
+    expect(await api.updateAiSettings({ provider_path: "backend_cli", provider: "codex", model: "default" })).toEqual(saved);
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method])).toEqual([
+      ["/api/v1/ai/providers", "GET"],
+      ["/api/v1/ai/settings", "GET"],
+      ["/api/v1/ai/settings", "PUT"],
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[2]![1].body)).toEqual({
+      provider_path: "backend_cli", provider: "codex", model: "default",
+    });
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.headers.Authorization).toBe(`Bearer ${auth.getAccessToken()}`);
+      expect(JSON.stringify(init)).not.toContain("api_key");
+    }
+  });
+
   it("loads only authenticated alerts from the backend", async () => {
     await signIn();
     const fetchMock = vi.fn().mockResolvedValue(json(200, { items: [], total: 0 }));
