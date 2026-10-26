@@ -3,9 +3,12 @@
 set -eu
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_dir"
-python3 -m unittest discover -s deploy/tests -p 'test_*.py' -v
+# Pin the only parser dependency; tests include a malformed manual workflow
+# and missing SSH credentials, both of which must fail before network access.
+uv run --no-project --with pyyaml==6.0.2 python -m unittest discover -s deploy/tests -p 'test_*.py' -v
+uv run --no-project --with pyyaml==6.0.2 python deploy/validate_workflows.py .github/workflows/ci.yml .github/workflows/promote.yml
 bash -n deploy/ssh_deploy.sh deploy/remote_deploy.sh
-python3 -m py_compile deploy/release.py deploy/smoke.py
+python3 -m py_compile deploy/release.py deploy/smoke.py deploy/validate_workflows.py
 envfile=$(mktemp)
 config=$(mktemp)
 trap 'rm -f "$envfile" "$config"' EXIT INT TERM

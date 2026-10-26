@@ -80,7 +80,7 @@ calling a public deployment complete.
 
 ## Host-free validation
 
-From the repository root, with Python 3, OpenSSL, and Docker Compose:
+From the repository root, with Python 3, `uv`, OpenSSL, and Docker Compose:
 
 ```bash
 sh deploy/test_cd.sh
@@ -88,9 +88,12 @@ cd backend && uv run --no-sync pytest -q
 cd ../frontend && npm test && npx tsc --noEmit && npm run build
 ```
 
-The CD check tests digest and evidence validation, shell syntax, and a merged
-Compose configuration with no build contexts. It uses placeholder digests and
-temporary local files; it does not pull, publish, open ports, or deploy. A
+The CD check parses both workflow YAML files with a pinned PyYAML dependency,
+rejects duplicate keys and malformed job structure, and proves malformed
+manual promotion YAML and missing SSH secrets fail closed. It also tests digest
+and evidence validation, shell syntax, and a merged Compose configuration with
+no build contexts. It uses placeholder digests and temporary local files; it
+does not pull, publish, open ports, or deploy. A
 live GitHub Actions run is also needed to verify registry permission and
 workflow behavior. External host QA remains pending until host/domain access
 is supplied.

@@ -70,6 +70,11 @@ jobs:
           Path('.env').write_text('RUNGUARD_AUTH_SECRET=' + secrets.token_hex(32) + '\n')
           PY
           docker compose config --quiet
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.9.8'
+      - name: Validate digest promotion workflows and host-free Compose
+        run: sh deploy/test_cd.sh
 
   publish:
     name: Publish tested image digests
