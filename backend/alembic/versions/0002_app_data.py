@@ -54,7 +54,10 @@ def upgrade() -> None:
     op.create_index("ix_runs_worker_status", "runs", ["worker_id", "status"])
     op.create_table(
         "run_logs",
-        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        # SQLite needs INTEGER for its rowid autoincrement; PostgreSQL uses
+        # BIGSERIAL so the polling cursor retains its signed-64 range.
+        sa.Column("id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+                  primary_key=True, autoincrement=True),
         sa.Column("run_id", sa.String(36), sa.ForeignKey("runs.id"), nullable=False),
         sa.Column("owner_user_id", sa.String(36), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("timestamp", sa.String(35), nullable=False),

@@ -30,7 +30,8 @@ def upgrade() -> None:
     )
     op.create_index("ix_alerts_owner_created", "alerts", ["owner_user_id", "created_at"])
     op.create_index("uq_alerts_open_fingerprint", "alerts", ["fingerprint"],
-                    unique=True, sqlite_where=sa.text("status = 'open'"))
+                    unique=True, sqlite_where=sa.text("status = 'open'"),
+                    postgresql_where=sa.text("status = 'open'"))
 
 
 def downgrade() -> None:

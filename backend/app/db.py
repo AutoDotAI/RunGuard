@@ -1,4 +1,4 @@
-"""SQLite models, connections, and migrations for RunGuard."""
+"""RunGuard persistence models and the current SQLite repository adapter."""
 
 import os
 from pathlib import Path
@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, create_engine, event, select, text
+from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, create_engine, event, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -68,14 +68,16 @@ class RunRecord(Base):
         Index("ix_runs_worker_created", "worker_id", "created_at"),
         Index("ix_runs_worker_status", "worker_id", "status"),
         Index("uq_runs_one_active_per_worker", "worker_id", unique=True,
-              sqlite_where=text("status IN ('queued', 'running')")),
+              sqlite_where=text("status IN ('queued', 'running')"),
+              postgresql_where=text("status IN ('queued', 'running')")),
     )
 
 
 class RunLogRecord(Base):
     __tablename__ = "run_logs"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"),
+                                    primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id"), nullable=False)
     owner_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     timestamp: Mapped[str] = mapped_column(String(35), nullable=False)
@@ -107,7 +109,8 @@ class AlertRecord(Base):
     __table_args__ = (
         Index("ix_alerts_owner_created", "owner_user_id", "created_at"),
         Index("uq_alerts_open_fingerprint", "fingerprint", unique=True,
-              sqlite_where=text("status = 'open'")),
+              sqlite_where=text("status = 'open'"),
+              postgresql_where=text("status = 'open'")),
     )
 
 
