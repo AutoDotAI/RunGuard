@@ -88,6 +88,23 @@ def test_snapshot_selects_exact_litellm_model_without_host_fallback(monkeypatch)
     assert len(seen) == 1 and seen[0]["model"] == "openai/gpt-4o-mini"
 
 
+def test_snapshot_selects_exact_host_provider_without_api_fallback(monkeypatch):
+    seen = []
+    monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "litellm")
+    monkeypatch.setattr("app.workers.url_summarizer.HostCLIClient.complete",
+                        lambda self, **kwargs: seen.append((self.provider, kwargs["model"])) or
+                        "# Article\n- Fact one.\n- Fact two.\n- Fact three.")
+    monkeypatch.setattr("app.workers.url_summarizer.LiteLLMClient.complete",
+                        lambda self, **kwargs: pytest.fail("API fallback"))
+    snapshot = RunSnapshot("run-id", "url_summarizer", "https://example.com/article",
+                           json.dumps({"provider_path": "backend_cli", "provider": "claude",
+                                       "model": "claude-sonnet-4-5"}))
+    body = b"<html><body><article>" + b"A readable article with facts and context. " * 5 + b"</article></body></html>"
+    result = summarize(snapshot, fetch=lambda _url: FetchResponse(200, {"content-type": "text/html"}, body))
+    assert result.error_code is None
+    assert seen == [("claude", "claude-sonnet-4-5")]
+
+
 @pytest.mark.parametrize("provider,env,model", [
     ("codex", "RUNGUARD_CODEX_MODELS", "gpt-5-codex"),
     ("claude", "RUNGUARD_CLAUDE_MODELS", "claude-sonnet-4-5"),
