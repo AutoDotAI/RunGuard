@@ -133,6 +133,15 @@ def test_heartbeat_age_grows_after_worker_stops(tmp_path, monkeypatch):
         "url_summarizer", "website_monitor"]
 
 
+def test_metric_resource_identity_is_stable_across_process_restarts():
+    for service in ("runguard-api", "runguard-worker"):
+        before_restart = observability._service_resource(service)
+        after_restart = observability._service_resource(service)
+        assert before_restart.attributes["service.name"] == service
+        assert before_restart.attributes["service.instance.id"] == service
+        assert after_restart.attributes["service.instance.id"] == service
+
+
 def test_sqlite_traceparent_survives_a_separate_worker_process(tmp_path):
     database_url = f"sqlite:///{tmp_path / 'separate.db'}"
     with TestClient(create_app(secret=SECRET, database_url=database_url)) as client:

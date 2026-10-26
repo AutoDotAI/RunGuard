@@ -11,7 +11,6 @@ import os
 import secrets
 import subprocess
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -54,7 +53,7 @@ def eventually(label: str, condition, timeout: float = 30):
             last = condition()
             if last:
                 return last
-        except (urllib.error.URLError, KeyError, ValueError) as error:
+        except (OSError, KeyError, ValueError) as error:
             last = error
         time.sleep(1)
     raise RuntimeError(f"{label} not observed within {timeout}s: {last}")
@@ -88,6 +87,32 @@ def run() -> None:
         eventually("queued depth", lambda: sum(float(row["value"][1]) for row in
                    query("prometheus", "api/v1/query", "runguard_queue_depth")
                    .get("data", {}).get("result", [])) >= 3)
+        heartbeat_query = 'runguard_worker_heartbeat_age_seconds{service_name="runguard-api"}'
+        def heartbeat_series():
+            return query("prometheus", "api/v1/query", heartbeat_query).get("data", {}).get("result", [])
+
+        baseline = eventually("one heartbeat series before restart", lambda: (
+            rows[0] if len(rows := heartbeat_series()) == 1 else None))
+        baseline_labels = baseline["metric"]
+        assert baseline_labels.get("service_instance_id") == "runguard-api", baseline_labels
+        baseline_timestamp = float(baseline["value"][0])
+        baseline_age = float(baseline["value"][1])
+        subprocess.run([*COMPOSE, "restart", "api"], cwd=ROOT, check=True,
+                       stdout=subprocess.DEVNULL)
+        eventually("API ready after restart", lambda: request(f"{API}/health").get("status") == "ok")
+
+        def restarted_heartbeat():
+            rows = heartbeat_series()
+            if len(rows) != 1:
+                return None
+            row = rows[0]
+            if (row["metric"] != baseline_labels or
+                    float(row["value"][0]) <= baseline_timestamp or
+                    float(row["value"][1]) <= baseline_age):
+                return None
+            return row
+
+        eventually("one stable, growing heartbeat series after API restart", restarted_heartbeat)
         fake_worker = '''from app.workers.runner import WorkerRunner
 from app.workers.website_monitor import monitor
 from app.workers.url_summarizer import summarize
@@ -166,7 +191,8 @@ observability.force_flush()
         summary_trace = eventually("model span", model_trace)
         captured = json.dumps([logs, api_logs, trace_data, summary_logs, summary_trace])
         assert all(secret not in captured for secret in (email, password, token, marker))
-        print(f"PASS: queued, monitor success/failure, fake-model summary, metrics, Loki logs and cross-process traces for run {run_id}")
+        print(f"PASS: stable growing heartbeat through API restart; queued, monitor success/failure, "
+              f"fake-model summary, metrics, Loki logs and cross-process traces for run {run_id}")
     finally:
         subprocess.run([*COMPOSE, "start", "worker"], cwd=ROOT, check=True,
                        stdout=subprocess.DEVNULL)

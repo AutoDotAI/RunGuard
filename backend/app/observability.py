@@ -102,6 +102,12 @@ def _heartbeat_age(_options):
     return [Observation(age)]
 
 
+def _service_resource(service: str) -> Resource:
+    # API and worker each have one process on the shared SQLite host. Keep
+    # Prometheus resource labels stable when either process restarts.
+    return Resource.create({"service.name": service, "service.instance.id": service})
+
+
 def configure(service: str, database_url: str | None = None) -> None:
     """Configure once per process; no exporter or network is used by default."""
     global _runtime
@@ -111,7 +117,7 @@ def configure(service: str, database_url: str | None = None) -> None:
                 _runtime["database_url"] = database_url
             return
         endpoint = os.environ.get("RUNGUARD_OTEL_ENDPOINT", "").rstrip("/")
-        resource = Resource.create({"service.name": service})
+        resource = _service_resource(service)
         traces = TracerProvider(resource=resource)
         readers = []
         if endpoint:

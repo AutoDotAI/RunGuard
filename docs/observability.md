@@ -31,6 +31,8 @@ The API exports `runguard_runs_enqueued_total{kind}`; the worker exports
 file for `runguard_worker_heartbeat_age_seconds`; it grows while the worker is
 stopped. `runguard_queue_depth{kind}` reads committed SQLite queue state. All
 Prometheus labels come from fixed allowlists. Histograms use seconds.
+API and worker resource instance IDs are fixed to their single-host service
+names, so a process restart updates the same heartbeat series.
 
 To find a run, copy its ID from the app's run-detail page. In Grafana Explore,
 choose Loki and run:
@@ -70,4 +72,6 @@ Do not use `down -v` when you want to keep accounts and run history. The
 smoke briefly stops and restarts the worker, so use a dedicated local Compose
 project with no queued jobs. It verifies dashboard provisioning, queued
 depth, a successful and failed monitor plus an offline fake-model summary,
-counters, Loki logs, and Tempo traces crossing API and worker processes.
+counters, Loki logs, and Tempo traces crossing API and worker processes. It
+also restarts the API and checks that the growing heartbeat age remains one
+stable Prometheus series.
