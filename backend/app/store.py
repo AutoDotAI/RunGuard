@@ -18,6 +18,9 @@ from .models import (
 from .outbound import OutboundError, parse_public_url
 
 
+SQLITE_MAX_ROWID = 2**63 - 1
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -232,6 +235,11 @@ class PersistentStore:
     def get_logs(self, owner: str, run_id: str, after_id: int) -> RunLogPage:
         with self.users.sessions() as session:
             self._owned_run(session, owner, run_id)
+            # SQLite row IDs cannot exceed signed 64-bit integers. The API
+            # accepts any nonnegative integer cursor, so larger values are
+            # valid empty pages and must never be bound into a SQLite query.
+            if after_id > SQLITE_MAX_ROWID:
+                return RunLogPage(items=[], next_after_id=after_id)
             records = session.scalars(select(RunLogRecord).where(
                 RunLogRecord.run_id == run_id,
                 RunLogRecord.owner_user_id == owner,

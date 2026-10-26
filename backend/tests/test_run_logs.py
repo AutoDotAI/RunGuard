@@ -105,6 +105,19 @@ def test_log_writer_rejects_untrusted_event_message_and_level():
                            "HTTP response received")
 
 
+@pytest.mark.parametrize("cursor", [2**63 - 1, 2**63, 10**100])
+def test_large_nonnegative_cursor_is_empty_without_sqlite_overflow(tmp_path, cursor):
+    with client_for(tmp_path / "large-cursor.db") as client:
+        alice = register(client, "large@example.com")
+        bob = register(client, "other@example.com")
+        _, run_id = enqueue(client, alice)
+        assert poll(client, alice, run_id, cursor) == {
+            "items": [], "next_after_id": cursor}
+        assert client.get(f"/api/v1/runs/{run_id}/logs?after_id={cursor}",
+                          headers=bob).status_code == 404
+        assert client.get(f"/api/v1/runs/{run_id}/logs?after_id={cursor}").status_code == 401
+
+
 @pytest.mark.parametrize("failure", ["fetch", "extraction", "llm"])
 def test_summarizer_failure_logs_are_safe_and_terminal(tmp_path, monkeypatch, failure):
     path = tmp_path / f"{failure}.db"
