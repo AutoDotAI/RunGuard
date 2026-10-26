@@ -16,6 +16,7 @@ import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AppRunsIdRouteImport } from './routes/_app/runs.$id'
+import { Route as AppSettingsAiRouteImport } from './routes/_app/settings.ai'
 import { Route as AppWorkersIndexRouteImport } from './routes/_app/workers.index'
 import { Route as AppWorkersNewRouteImport } from './routes/_app/workers.new'
 import { Route as AppWorkersIdIndexRouteImport } from './routes/_app/workers.$id.index'
@@ -55,6 +56,11 @@ const AppRunsIdRoute = AppRunsIdRouteImport.update({
   path: '/runs/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppSettingsAiRoute = AppSettingsAiRouteImport.update({
+  id: '/settings/ai',
+  path: '/settings/ai',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppWorkersIndexRoute = AppWorkersIndexRouteImport.update({
   id: '/workers/',
   path: '/workers/',
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/dashboard': typeof AppDashboardRoute
   '/runs/$id': typeof AppRunsIdRoute
+  '/settings/ai': typeof AppSettingsAiRoute
   '/workers/new': typeof AppWorkersNewRoute
   '/workers/': typeof AppWorkersIndexRoute
   '/workers/$id/edit': typeof AppWorkersIdEditRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/dashboard': typeof AppDashboardRoute
   '/runs/$id': typeof AppRunsIdRoute
+  '/settings/ai': typeof AppSettingsAiRoute
   '/workers/new': typeof AppWorkersNewRoute
   '/workers': typeof AppWorkersIndexRoute
   '/workers/$id/edit': typeof AppWorkersIdEditRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/runs/$id': typeof AppRunsIdRoute
+  '/_app/settings/ai': typeof AppSettingsAiRoute
   '/_app/workers/new': typeof AppWorkersNewRoute
   '/_app/workers/': typeof AppWorkersIndexRoute
   '/_app/workers/$id/edit': typeof AppWorkersIdEditRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/dashboard'
     | '/runs/$id'
+    | '/settings/ai'
     | '/workers/new'
     | '/workers/'
     | '/workers/$id/edit'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/dashboard'
     | '/runs/$id'
+    | '/settings/ai'
     | '/workers/new'
     | '/workers'
     | '/workers/$id/edit'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_app/dashboard'
     | '/_app/runs/$id'
+    | '/_app/settings/ai'
     | '/_app/workers/new'
     | '/_app/workers/'
     | '/_app/workers/$id/edit'
@@ -213,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRunsIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/settings/ai': {
+      id: '/_app/settings/ai'
+      path: '/settings/ai'
+      fullPath: '/settings/ai'
+      preLoaderRoute: typeof AppSettingsAiRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/workers/': {
       id: '/_app/workers/'
       path: '/workers'
@@ -247,6 +266,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteRouteChildren {
   AppDashboardRoute: typeof AppDashboardRoute
   AppRunsIdRoute: typeof AppRunsIdRoute
+  AppSettingsAiRoute: typeof AppSettingsAiRoute
   AppWorkersNewRoute: typeof AppWorkersNewRoute
   AppWorkersIndexRoute: typeof AppWorkersIndexRoute
   AppWorkersIdEditRoute: typeof AppWorkersIdEditRoute
@@ -256,6 +276,7 @@ interface AppRouteRouteChildren {
 const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppDashboardRoute: AppDashboardRoute,
   AppRunsIdRoute: AppRunsIdRoute,
+  AppSettingsAiRoute: AppSettingsAiRoute,
   AppWorkersNewRoute: AppWorkersNewRoute,
   AppWorkersIndexRoute: AppWorkersIndexRoute,
   AppWorkersIdEditRoute: AppWorkersIdEditRoute,

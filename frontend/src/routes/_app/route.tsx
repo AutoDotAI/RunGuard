@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Outlet, redirect, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { Activity, LayoutDashboard, LogOut, Plus, Boxes } from "lucide-react";
+import { Activity, LayoutDashboard, LogOut, Plus, Boxes, Settings2 } from "lucide-react";
 import { auth, useSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ export const Route = createFileRoute("/_app")({
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/workers", label: "Workers", icon: Boxes },
+  { to: "/settings/ai", label: "AI settings", icon: Settings2 },
 ] as const;
 
 function AppShell() {
