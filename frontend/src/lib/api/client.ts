@@ -66,6 +66,9 @@ async function request<T>(method: string, path: string, body?: unknown, query?: 
 }
 
 export const api: ApiClient = {
+  getAiProviders: () => request("GET", "/ai/providers"),
+  getAiSettings: () => request("GET", "/ai/settings"),
+  updateAiSettings: (input) => request("PUT", "/ai/settings", input),
   listWorkers: (pagination = {}) => request("GET", "/workers", undefined, pagination),
   getWorker: (id) => request("GET", `/workers/${resourceId(id)}`),
   createWorker: (input) => request("POST", "/workers", input),

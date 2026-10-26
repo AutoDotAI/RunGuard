@@ -184,11 +184,13 @@ def test_pagination_dashboard_and_validation(client):
 
 def test_contract_paths_match_backend_and_cors_is_local(client):
     contract = yaml.safe_load((Path(__file__).resolve().parents[2] / "openapi.yaml").read_text())
-    methods = {"get", "post", "patch", "delete"}
+    methods = {"get", "post", "put", "patch", "delete"}
     expected = {(method, path) for path, item in contract["paths"].items() for method in item if method in methods}
+    # AI settings routes are specified before backend implementation in issue #54.
+    planned = {key for key in expected if key[1].startswith("/api/v1/ai/")}
     actual = {(method, path) for path, item in client.get("/openapi.json").json()["paths"].items()
               for method in item if method in methods}
-    assert expected == actual
+    assert expected - planned <= actual <= expected
     allowed = client.options("/api/v1/workers", headers={"Origin": "http://localhost:5173",
                                                    "Access-Control-Request-Method": "GET"})
     assert allowed.headers["access-control-allow-origin"] == "http://localhost:5173"

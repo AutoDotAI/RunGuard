@@ -210,6 +210,19 @@ export function createMockClient(getUserId: () => string | null): ApiClient {
   };
 
   return {
+    async getAiProviders() {
+      owner();
+      // The demo cannot attest to a host CLI worker or server-side API key.
+      return delay({ providers: [] });
+    },
+    async getAiSettings() {
+      owner();
+      return delay({ provider_path: "backend_cli", provider: "codex", model: "default", available: false });
+    },
+    async updateAiSettings() {
+      owner();
+      throw new ApiError(409, "PROVIDER_UNAVAILABLE", "No AI provider is connected in demo mode.");
+    },
     async listWorkers(pagination: { limit?: number; offset?: number } = {}) {
       const me = owner();
       const db = load();

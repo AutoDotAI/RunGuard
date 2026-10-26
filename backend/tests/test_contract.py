@@ -11,7 +11,7 @@ from app.main import create_app
 
 
 ROOT = Path(__file__).resolve().parents[2]
-METHODS = {"get", "post", "patch", "delete"}
+METHODS = {"get", "post", "put", "patch", "delete"}
 # Approved P0 operations plus the P1 owner-scoped alert list.
 OPERATIONS = {
     ("get", "/health"): ("200", "Health", None),
@@ -29,7 +29,11 @@ OPERATIONS = {
     ("post", "/api/v1/runs/{run_id}/retry"): ("202", "EnqueuedRun", None),
     ("get", "/api/v1/dashboard/summary"): ("200", "DashboardSummary", None),
     ("get", "/api/v1/alerts"): ("200", "AlertPage", None),
+    ("get", "/api/v1/ai/providers"): ("200", "AiProviderCatalog", None),
+    ("get", "/api/v1/ai/settings"): ("200", "AiSettings", None),
+    ("put", "/api/v1/ai/settings"): ("200", "AiSettings", "AiSettingsInput"),
 }
+PLANNED = {key for key in OPERATIONS if key[1].startswith("/api/v1/ai/")}
 PUBLIC = {("get", "/health"), ("post", "/api/v1/auth/register"), ("post", "/api/v1/auth/login")}
 QUERY = {
     ("get", "/api/v1/workers"): {"limit", "offset"},
@@ -44,6 +48,11 @@ SHARED = {
     "EnqueuedRun": "EnqueuedRun", "RunLog": "RunLog", "RunLogPage": "RunLogPage",
     "DashboardSummary": "DashboardSummary",
     "Alert": "Alert", "AlertPage": "AlertPage",
+}
+FRONTEND_ONLY = {
+    "AiModel": "AiModel", "AiProvider": "AiProvider",
+    "AiProviderCatalog": "AiProviderCatalog", "AiSettings": "AiSettings",
+    "AiSettingsInput": "AiSettingsInput",
 }
 
 
@@ -158,8 +167,11 @@ def test_fastapi_generated_openapi_has_matching_operations_auth_and_response_fie
     assert response.status_code == 200
     generated = response.json()
     actual = operations(generated)
-    assert set(actual) == set(OPERATIONS)
+    # Planned AI settings routes are contract-first and land in a later issue.
+    assert set(OPERATIONS) - PLANNED <= set(actual) <= set(OPERATIONS)
     for key, (success, _response_schema, request_schema) in OPERATIONS.items():
+        if key not in actual:
+            continue
         documented = operations(expected)[key]
         implementation = actual[key]
         assert success in implementation["responses"], key
@@ -181,7 +193,7 @@ def test_fastapi_generated_openapi_has_matching_operations_auth_and_response_fie
 
 def test_frontend_shared_types_and_error_envelope_match_required_fields(tmp_path):
     document = contract()
-    for schema, interface in SHARED.items():
+    for schema, interface in (SHARED | FRONTEND_ONLY).items():
         required = set(document["components"]["schemas"][schema].get("required", []))
         assert required == type_script_required(interface), (schema, interface)
     assert set(document["components"]["schemas"]["TokenResponse"]["properties"]["user"]["required"]) == {"id", "email"}
@@ -199,3 +211,25 @@ def test_frontend_shared_types_and_error_envelope_match_required_fields(tmp_path
     assert unauthorized.status_code == 401
     assert set(unauthorized.json()) == {"error", "request_id"}
     assert set(unauthorized.json()["error"]) >= {"code", "message"}
+
+
+def test_ai_settings_contract_is_authenticated_bounded_and_secret_free():
+    document = contract()
+    catalog = document["components"]["schemas"]["AiProvider"]
+    assert set(catalog["required"]) == type_script_required("AiProvider")
+    assert document["components"]["schemas"]["AiProviderPath"]["enum"] == ["backend_cli", "api"]
+    assert document["components"]["schemas"]["AiProviderId"]["enum"] == ["codex", "claude", "litellm"]
+    for key in PLANNED:
+        operation = operations(document)[key]
+        assert operation.get("security", document["security"]) == [{"localBearer": []}]
+        assert "401" in operation["responses"]
+        example = operation["responses"]["200"]["content"]["application/json"]["example"]
+        assert "api_key" not in str(example).lower()
+    update = operations(document)[("put", "/api/v1/ai/settings")]
+    assert {"200", "401", "409", "422", "500"} == set(update["responses"])
+    assert update["requestBody"]["content"]["application/json"]["example"] == {
+        "provider_path": "backend_cli", "provider": "codex", "model": "default"
+    }
+    input_schema = document["components"]["schemas"]["AiSettingsInput"]
+    assert input_schema["additionalProperties"] is False
+    assert set(input_schema["properties"]) == {"provider_path", "provider", "model"}
