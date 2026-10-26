@@ -6,6 +6,8 @@ These are the original proposed work items; public GitHub issues are the live tr
 
 **Provider amendment — 2026-10-26:** The owner requested host-side CLI use of an existing Codex login as the default model path, with Claude CLI selectable and LiteLLM API-key access optional. This is not yet an implemented or verified RunGuard provider; see the approved spec amendment and tasks #35–#36 below. CLI login/session material must remain on the host, outside containers. Website Monitor remains deterministic and the responder's action set remains bounded.
 
+**Current local-only amendment — 2026-10-27:** The owner explicitly requested PostgreSQL, a frontend AI provider/model page, and stronger worker tests, but is **not deploying** RunGuard. Tasks #37 onward supersede historical SQLite and deployment wording above; their numbers are backlog identifiers, not GitHub issue numbers. Public hosting and CD remain deferred under [issue #34](https://github.com/AutoDotAI/RunGuard/issues/34). Preserve the existing SQLite volume and data during migration. The current local target uses `compose.yaml` and optional `compose.observability.yaml`; the tasks below identify cleanup only after functionality has been consolidated. The [Zoomcamp project brief](https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project) remains a review checklist, with deployment and CD reported as unfulfilled rather than claimed complete.
+
 ## 1. Set up an empty project with a passing test
 Goal: Establish a clean-checkout baseline that starts and passes one automated test.
 Description: In the current workspace, verify that `backend/` can install its dependencies and run a minimal `/health` test from a fresh environment; keep the existing Lovable source intact. Record the exact install and test commands and make the test pass without external services or credentials.
@@ -133,3 +135,75 @@ Description: Add a host-side backend worker adapter that passes only sanitized, 
 ## 36. Add host CLI summarizer provider
 Goal: Make the host Codex CLI the default local model path for URL Summarizer while preserving Claude CLI and LiteLLM as selectable alternatives.
 Description: Run a bounded host-side worker process against extracted, size-limited page text using fixed CLI arguments, a timeout, sanitized output, and only the host's existing CLI login. Keep CLI credentials out of Compose containers; test provider selection, missing login, timeout, malformed output, prompt injection in page text, and optional server-side LiteLLM API-key behavior with fake processes and model adapters, then verify one local result without a paid API call if CLI access is available.
+
+## 37. Freeze the AI settings API contract
+Goal: Define the authenticated provider catalog and per-user settings before implementation.
+Description: Add `GET /api/v1/ai/providers` and `GET`/`PUT /api/v1/ai/settings` to `openapi.yaml`, including `backend_cli` Codex/Claude and `api` LiteLLM models, availability, validation errors, and bearer authentication. Sync `frontend/src/lib/api/types.ts` and its client interface, then run the OpenAPI drift and frontend type checks; this is the prerequisite for tasks #45–#47.
+
+## 38. Add the local PostgreSQL Compose service
+Goal: Start a persistent healthy PostgreSQL database for local API and worker use.
+Description: Add PostgreSQL 16+ with a named volume, health check, private network, and loopback-bound host port to `compose.yaml`; keep secrets in ignored local environment files. Verify startup, health, and persistence after restart without switching application storage or deleting the SQLite volume; task #39 creates its schema.
+
+## 39. Create a PostgreSQL Alembic schema
+Goal: Migrate an empty PostgreSQL database to the full RunGuard schema.
+Description: Adapt `backend/alembic/` migrations and SQLAlchemy models for PostgreSQL, including the one-active-run partial index, foreign keys, and signed-64 `BIGINT`/`BIGSERIAL` `run_logs.id` cursor. Verify upgrade from empty and fresh-schema constraints in PostgreSQL; do not rewrite existing SQLite data or claim a data migration.
+
+## 40. Port account and worker persistence to PostgreSQL
+Goal: Keep authentication and owned worker CRUD functional on the new database.
+Description: Replace SQLite URL guards, PRAGMAs, and SQLite-specific transactions in `backend/app/db.py`, auth persistence, and worker store operations with PostgreSQL-compatible SQLAlchemy behavior. Using the schema from task #39, test registration, password-hash login, ownership isolation, worker archive, and restart persistence with an isolated PostgreSQL database.
+
+## 41. Port queue transactions and worker exclusivity
+Goal: Execute each queued run once through PostgreSQL while preserving its full state history.
+Description: Replace `BEGIN IMMEDIATE` and file-lock assumptions in enqueue, claim, completion, and startup reconciliation with short transactions, `FOR UPDATE SKIP LOCKED` or equivalent, and a tested advisory lock or lease for the single local worker. Against PostgreSQL, race two launchers and two worker processes, then prove one active run per worker, no duplicate claim, and visible `WORKER_INTERRUPTED` after a crash; keep HTTP/model calls outside transactions.
+
+## 42. Port alerts, incident audit, and observability queries
+Goal: Preserve local alerting and incident response after removing SQLite as the app database.
+Description: Convert raw `sqlite3` and `BEGIN IMMEDIATE` use in alerting, demo controls, responder, incident AI, and metric callbacks to bounded PostgreSQL queries or SQLAlchemy sessions. With tasks #39–#41 in place, trigger and resolve an alert and inspect its audit and metrics after a restart; retain the responder's existing action limits.
+
+## 43. Preserve database access and URL egress isolation
+Goal: Let the local worker reach PostgreSQL without allowing arbitrary private URL fetches.
+Description: Wire container workers to the Compose PostgreSQL service and host CLI workers to its loopback-bound port; keep URL fetching's existing SSRF restrictions independent of database connectivity. Probe a successful database connection plus rejected RFC1918, metadata, and redirect destinations, and verify no CLI login material enters containers; no production firewall or deployment work is in this local task.
+
+## 44. Import existing SQLite data once
+Goal: Move local accounts and run history into PostgreSQL without data loss.
+Description: Build a fail-closed offline importer that takes a consistent SQLite backup, leaves the original volume untouched, and copies IDs, salted password hashes, workers, snapshots, runs, logs, alerts, and incident records into an empty migrated PostgreSQL schema. Handle `runs.retry_of_run_id` self-references and reset all sequences, including `run_logs.id`; verify counts, foreign keys, owner isolation, login, and old run/log views, and refuse a nonempty or incompatible target.
+
+## 45. Persist and expose per-user AI settings
+Goal: Return truthful available providers and save each user's validated choice.
+Description: Using task #37's contract and task #39's schema, add a PostgreSQL settings table and authenticated provider catalog/settings routes; derive availability from the active host-worker and server-side LiteLLM configuration, never browser secrets. Test default Codex, disabled/unavailable providers, unsupported models, owner isolation, and restart persistence without calling a live model.
+
+## 46. Add the frontend AI settings page
+Goal: Let a signed-in user select an available model path and model in the Lovable app.
+Description: Add protected `/settings/ai` navigation and a page using the typed client from task #37 with loading, unavailable, validation, save-success, and error states; offer only catalog-approved choices. Test route protection, provider/model changes, disabled choices, failed save, and absence of API keys or CLI credentials in browser state; preserve the existing frontend layout.
+
+## 47. Snapshot provider and model per run
+Goal: Make every URL Summarizer run use its selected provider/model without hidden fallback.
+Description: At enqueue, copy task #45's setting into the run snapshot; manual retry must copy the original run snapshot, while Website Monitor ignores it. Validate the model allowlist and pass it as a fixed `--model` CLI argument to Codex/Claude or server-side LiteLLM; test exact fake-process arguments, setting edits after enqueue, disabled route errors, and no automatic retry.
+
+## 48. Test worker failure boundaries and adapters
+Goal: Reproduce the user's PDF and provider failures and prove bounded worker behavior.
+Description: Add injected HTTP/CLI/LiteLLM tests showing an oversized or unsupported PDF fails before a model call, bounded HTML reaches the selected provider, and an unavailable provider fails with a distinct truthful error. Cover Codex, Claude, and LiteLLM timeouts, output size limits, malformed responses, subprocess cleanup, prompt-injection text, retry snapshots, and sanitized logs without paid API calls.
+
+## 49. Run PostgreSQL end-to-end integration tests
+Goal: Prove the local frontend/API/worker/database journey against real PostgreSQL.
+Description: Start an isolated test database from task #38's service or CI equivalent and exercise signup, ownership, both worker types, enqueue-to-terminal logs, retry, alerting, and restart persistence with fake outbound transports and model adapters. Include concurrent enqueue/claim and two-user isolation; record exact commands and results without assuming a live website or paid provider.
+
+## 50. Replace local backup and recovery commands
+Goal: Preserve data through the SQLite cutover and later local PostgreSQL recovery.
+Description: Document and test a consistent pre-cutover SQLite backup, the importer from task #44, and `pg_dump`/`pg_restore` for the resulting PostgreSQL database. Demonstrate restore into a fresh local database and verify login/history; explain that restoring the old SQLite snapshot after PostgreSQL writes discards those newer writes, without adding public deployment rollback machinery.
+
+## 51. Consolidate local Compose and retire deployment files
+Goal: Give the owner one normal local launch and one optional observability launch.
+Description: Review the four current files—`compose.yaml`, `compose.observability.yaml`, `compose.host-ai.yaml`, and `compose.prod.yaml`—and move any needed local services from the last two into the first two before retiring the unused overrides and deployment-only scripts/workflows. Check Makefile/README references, run `docker compose config` and a local smoke journey, and retain the SQLite backup plus useful migration/security commands; the demo, CD, responder, and rollback-rehearsal overrides were already removed.
+
+## 52. Update CI and exact local commands
+Goal: Verify the PostgreSQL-based project automatically and make it runnable from a clean checkout.
+Description: Add a PostgreSQL service to CI for backend integration tests while keeping unit/frontend tests and container builds independent of live credentials; remove public deployment/CD jobs for the local milestone. Update the Makefile and README with tested install, migrate/import, launch/stop, test, observability, and backup commands; publish actual command results and any host CLI prerequisite.
+
+## 53. Audit the Zoomcamp project evidence
+Goal: Show which course project requirements the local deliverable actually meets.
+Description: Compare the delivered app and evidence with the [Zoomcamp project brief](https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project), covering tests, telemetry, alert trigger, responder, architecture, and reviewer instructions. Mark public deployment and CD as deferred under issue #34 and the on-call agent as demo-bounded where applicable; link only verified screenshots, CI runs, and local command outputs.
+
+## 54. Obtain external peer reviews
+Goal: Complete the course's human review requirement with real independent feedback.
+Description: Ask three real Zoomcamp peers to review the final repository and submit their required reviews through the course process; record links or evidence permitted by the course. Address actionable findings in separate issues and never count coding-agent QA as an external peer review.
