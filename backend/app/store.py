@@ -1,6 +1,7 @@
 """Owned worker, run, and log operations backed by SQLite."""
 
 import json
+import socket
 from datetime import datetime, timedelta, timezone
 from ipaddress import ip_address
 from threading import RLock
@@ -47,6 +48,14 @@ def validate_public_url(value: str) -> str:
     try:
         ip_address(host)
     except ValueError:
+        pass
+    else:
+        raise Problem(422, "VALIDATION_ERROR", "IP address URLs are not allowed")
+    # socket.inet_aton also recognizes abbreviated, octal, and hexadecimal IPv4
+    # spellings (for example 127.1) that ip_address deliberately rejects.
+    try:
+        socket.inet_aton(host)
+    except OSError:
         pass
     else:
         raise Problem(422, "VALIDATION_ERROR", "IP address URLs are not allowed")

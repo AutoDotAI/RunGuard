@@ -46,9 +46,11 @@ class WorkerCreate(StrictModel):
     kind: WorkerKind
     url: str = Field(min_length=1, max_length=2048)
 
-    @field_validator("name")
+    @field_validator("name", mode="before")
     @classmethod
-    def nonempty_name(cls, value: str) -> str:
+    def nonempty_name(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
         value = value.strip()
         if not value:
             raise ValueError("Name is required")
@@ -59,12 +61,14 @@ class WorkerUpdate(StrictModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     url: str | None = Field(default=None, min_length=1, max_length=2048)
 
-    @field_validator("name")
+    @field_validator("name", mode="before")
     @classmethod
-    def nonempty_name(cls, value: str | None) -> str | None:
-        if value is not None and not value.strip():
+    def nonempty_name(cls, value: object) -> object:
+        if value is None or not isinstance(value, str):
+            return value
+        if not value.strip():
             raise ValueError("Name is required")
-        return value.strip() if value is not None else None
+        return value.strip()
 
 
 class LastRun(StrictModel):
