@@ -17,7 +17,9 @@ from app.workers.runner import HandlerOutcome, WorkerRunner
     "ftp://example.com/", "https://user:secret@example.com/", "http://localhost/",
     "https://foo.local/", "https://metadata.internal/", "https://one-label/",
     "http://127.0.0.1/", "http://127.1/", "http://0x7f000001/",
-    "http://169.254.169.254/", "https://[::1]/", "https://[::ffff:127.0.0.1]/",
+    "http://169.254.169.254/", "http://10.0.0.1/", "http://172.16.0.1/",
+    "http://192.168.1.1/", "http://postgres:5432/",
+    "https://[::1]/", "https://[::ffff:127.0.0.1]/",
     "https://example.com:80/", "http://example.com:443/", "https://example.com:9999/",
     "https://example.com:/", "https://-bad.example/", "https://example..com/",
     "https://example.com\\@private.local/", "https://example.com/" + "a" * 2048,
@@ -51,6 +53,8 @@ def test_save_time_policy_never_resolves_dns(monkeypatch):
     (["93.184.215.14"], None),
     (["2606:4700:4700::1111"], None),
     (["93.184.215.14", "10.0.0.1"], "DESTINATION_BLOCKED"),
+    (["172.19.0.2"], "DESTINATION_BLOCKED"),  # Compose database bridge
+    (["192.168.1.1"], "DESTINATION_BLOCKED"),
     (["2606:4700:4700::1111", "fd00::1"], "DESTINATION_BLOCKED"),
     (["169.254.169.254"], "DESTINATION_BLOCKED"),
     (["::ffff:127.0.0.1"], "DESTINATION_BLOCKED"),
@@ -236,9 +240,14 @@ def test_pinned_http_socket_and_https_hostname_verification(monkeypatch):
         ("93.184.215.14", 80), ("2606:4700:4700::1111", 443)]
 
 
-def test_redirect_not_followed_and_environment_proxy_ignored(monkeypatch):
+@pytest.mark.parametrize("location", [
+    "http://127.0.0.1/private",
+    "http://172.19.0.2:5432/",
+    "http://169.254.169.254/latest/meta-data/",
+])
+def test_redirect_not_followed_and_environment_proxy_ignored(monkeypatch, location):
     monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:8888")
-    response = FakeResponse(302, [b""], [("Location", "http://127.0.0.1/private")])
+    response = FakeResponse(302, [b""], [("Location", location)])
     connection = FakeConnection(response)
     calls = []
     result = outbound.fetch("https://example.com/path", resolver=lambda _host: ["93.184.215.14"],

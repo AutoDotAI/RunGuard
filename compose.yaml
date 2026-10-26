@@ -7,10 +7,8 @@ x-backend: &backend
   networks:
     - default
     - database
-  volumes:
-    - runguard_data:/data
   environment:
-    RUNGUARD_DATABASE_URL: sqlite:////data/runguard.db
+    RUNGUARD_DATABASE_URL: postgresql+psycopg://${RUNGUARD_POSTGRES_USER:-runguard}:${RUNGUARD_POSTGRES_PASSWORD:?Set a stable PostgreSQL password in .env}@postgres:5432/${RUNGUARD_POSTGRES_DB:-runguard}
     RUNGUARD_AUTH_SECRET: ${RUNGUARD_AUTH_SECRET:?Set a stable secret of at least 32 bytes in .env}
 
 services:
@@ -36,6 +34,9 @@ services:
 
   migrate:
     <<: *backend
+    depends_on:
+      postgres:
+        condition: service_healthy
     command:
       - sh
       - -ec
@@ -44,6 +45,8 @@ services:
 
   api:
     <<: *backend
+    # Server-side model catalog and optional LiteLLM credentials stay out of web.
+    env_file: ${RUNGUARD_MODEL_ENV_FILE:-.env}
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
     depends_on:
       migrate:
@@ -60,9 +63,9 @@ services:
 
   worker:
     <<: *backend
-    env_file: .env
+    env_file: ${RUNGUARD_MODEL_ENV_FILE:-.env}
     environment:
-      RUNGUARD_DATABASE_URL: sqlite:////data/runguard.db
+      RUNGUARD_DATABASE_URL: postgresql+psycopg://${RUNGUARD_POSTGRES_USER:-runguard}:${RUNGUARD_POSTGRES_PASSWORD:?Set a stable PostgreSQL password in .env}@postgres:5432/${RUNGUARD_POSTGRES_DB:-runguard}
       RUNGUARD_AUTH_SECRET: ${RUNGUARD_AUTH_SECRET:?Set a stable secret of at least 32 bytes in .env}
       # Host subscription credentials are never mounted into this container.
       RUNGUARD_MODEL_PROVIDER: ${RUNGUARD_MODEL_PROVIDER:-disabled}
