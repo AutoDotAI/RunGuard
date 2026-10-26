@@ -6,12 +6,15 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from .auth import TokenService
 from .db import UserRepository
 from .models import Health
 from .routers import auth, dashboard, runs, workers
 from .store import PersistentStore, Problem
+from .rate_limit import RateLimiter, RateLimited
+from .outbound import allowed_public_hosts
 
 
 def error_response(status: int, code: str, message: str, details: dict | None = None):
@@ -27,6 +30,7 @@ def create_app(store: PersistentStore | None = None, secret: str | None = None,
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        allowed_public_hosts()
         if app.state.tokens is None:
             app.state.tokens = TokenService(secret)
         users.migrate()
@@ -38,6 +42,7 @@ def create_app(store: PersistentStore | None = None, secret: str | None = None,
     app = FastAPI(title="RunGuard API", version="1.0.0", lifespan=lifespan)
     app.state.users = users
     app.state.store = store if store is not None else PersistentStore(users)
+    app.state.rate_limiter = RateLimiter()
     # Keep module import side-effect free; uvicorn validates the configured secret at startup.
     app.state.tokens = TokenService(secret) if secret is not None else None
     origins = os.environ.get("RUNGUARD_CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173")
@@ -47,7 +52,10 @@ def create_app(store: PersistentStore | None = None, secret: str | None = None,
 
     @app.exception_handler(Problem)
     async def problem_handler(_request: Request, exc: Problem):
-        return error_response(exc.status, exc.code, exc.message, exc.details)
+        response = error_response(exc.status, exc.code, exc.message, exc.details)
+        if isinstance(exc, RateLimited):
+            response.headers["Retry-After"] = str(exc.retry_after)
+        return response
 
     @app.exception_handler(RequestValidationError)
     async def validation_handler(_request: Request, exc: RequestValidationError):
@@ -61,6 +69,11 @@ def create_app(store: PersistentStore | None = None, secret: str | None = None,
 
     @app.get("/health", tags=["Health"], response_model=Health)
     def health():
+        try:
+            with users.sessions() as session:
+                session.execute(text("SELECT 1"))
+        except Exception:
+            raise Problem(503, "NOT_READY", "Database is unavailable") from None
         return {"status": "ok"}
 
     app.include_router(auth.router)

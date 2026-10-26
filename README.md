@@ -174,3 +174,11 @@ rm -f .env
 CI does not start the containers, call live target websites or model providers,
 publish images, or deploy. Its tests inject outbound HTTP and model fakes;
 the local Compose smoke above is the separate runtime check.
+
+## Public deployment preparation
+
+The one-host HTTPS topology, exact destination allowlist, worker firewall,
+rate limits, and isolated local probe are documented in
+[deploy/README.md](deploy/README.md). Public deployment remains gated on a
+supplied host/domain, a repeated host egress probe, and independent external
+HTTPS QA for [issue #23](https://github.com/AutoDotAI/RunGuard/issues/23).

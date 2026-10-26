@@ -8,6 +8,16 @@ The shared outbound boundary is `app.outbound.parse_public_url` and `app.outboun
 
 **Public release gate:** Do not claim arbitrary user URLs are safe or enable public arbitrary-URL execution yet. Issue #23 must verify host-level outbound egress restrictions, including denial of private, loopback, link-local, and metadata destinations, in the actual deployment. A hostname allowlist alone is insufficient. Until that gate is verified, restrict execution to server-configured trusted public hosts plus enforced egress restrictions, as required by `_docs/old/SPEC.md` §10.2.
 
+The local production template in [`../deploy/README.md`](../deploy/README.md)
+enables `RUNGUARD_PUBLIC_MODE=1`, requires up to five exact
+`RUNGUARD_ALLOWED_HOSTS`, and applies that list at save and execution time.
+Public mode also limits registration (5 per client IP per 5 minutes), login
+(10 per client IP per 5 minutes), and run creation (10 per user per minute),
+returning `429 RATE_LIMITED` with `Retry-After`. These single-process limits
+reset after an API restart. `/health` checks the SQLite connection and returns
+`503 NOT_READY` if it cannot be read. The production Compose topology is a
+local readiness template until external host/HTTPS/egress QA is complete.
+
 ```bash
 cd backend
 uv sync --extra test

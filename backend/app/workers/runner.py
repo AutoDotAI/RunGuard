@@ -12,6 +12,7 @@ from sqlalchemy import select, text
 
 from app.db import RunRecord, UserRepository
 from app.models import MonitorResult, SummarizerResult
+from app.outbound import allowed_public_hosts
 from app.run_logs import new_run_log, safe_event
 from app.store import now
 from .types import HandlerOutcome, RunSnapshot
@@ -207,6 +208,7 @@ def main() -> int:
     parser.add_argument("--once", action="store_true", help="process at most one queued run")
     args = parser.parse_args()
     try:
+        allowed_public_hosts()
         with WorkerRunner() as runner:
             if args.once:
                 runner.run_once()

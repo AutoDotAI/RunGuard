@@ -37,7 +37,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Health'
+                $ref: '#/components/schemas/ErrorResponse'
   /api/v1/auth/register:
     post:
       tags: [Auth]
@@ -59,6 +59,7 @@ paths:
                 $ref: '#/components/schemas/TokenResponse'
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/auth/login:
     post:
@@ -81,6 +82,7 @@ paths:
                 $ref: '#/components/schemas/TokenResponse'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/workers:
     get:
@@ -396,7 +398,11 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     RateLimited:
-      description: Worker or active-run quota exceeded
+      description: Request rate limit or worker/active-run quota exceeded; rate limits include Retry-After
+      headers:
+        Retry-After:
+          description: Seconds until another request may be accepted for RATE_LIMITED responses
+          schema: { type: integer, minimum: 1 }
       content:
         application/json:
           schema:

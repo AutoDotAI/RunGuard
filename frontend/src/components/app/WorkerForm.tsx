@@ -11,6 +11,8 @@ const kinds: { kind: WorkerKind; title: string; icon: typeof Globe; desc: string
   { kind: "website_monitor", title: "Website Monitor", icon: Globe, desc: "HTTP check. Success = status 200–399. Timeout 10 s." },
   { kind: "url_summarizer", title: "AI URL Summarizer", icon: Sparkles, desc: "Concise neutral summary: heading + 3–6 bullets. Model set by server." },
 ];
+const allowedHosts = import.meta.env["VITE_ALLOWED_HOSTS"]?.trim();
+const summarizerAvailable = import.meta.env["VITE_SUMMARIZER_AVAILABLE"] !== "false";
 
 export function WorkerForm({ initial, editing, onSubmit, submitLabel }: { initial?: WorkerInput; editing?: boolean; onSubmit: (v: WorkerInput) => Promise<void>; submitLabel: string }) {
   const [v, setV] = useState<WorkerInput>(initial ?? { name: "", kind: "website_monitor", url: "" });
@@ -43,7 +45,7 @@ export function WorkerForm({ initial, editing, onSubmit, submitLabel }: { initia
             <button
               type="button"
               key={kind}
-              disabled={editing}
+              disabled={editing || (kind === "url_summarizer" && !summarizerAvailable)}
               aria-pressed={v.kind === kind}
               onClick={() => setV({ ...v, kind })}
               className={cn(
@@ -52,7 +54,7 @@ export function WorkerForm({ initial, editing, onSubmit, submitLabel }: { initia
               )}
             >
               <div className="flex items-center gap-2 font-medium"><Icon className="size-4" />{title}</div>
-              <p className="mt-1 text-xs text-muted-foreground">{desc}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{kind === "url_summarizer" && !summarizerAvailable ? "Live summaries are unavailable in this demo." : desc}</p>
             </button>
           ))}
         </div>
@@ -65,7 +67,7 @@ export function WorkerForm({ initial, editing, onSubmit, submitLabel }: { initia
       <div className="space-y-1.5">
         <Label htmlFor="url">URL</Label>
         <Input id="url" className="font-mono" value={v.url} aria-invalid={!!errs.url} onChange={(e) => setV({ ...v, url: e.target.value })} placeholder="https://www.python.org/" />
-        {errs.url ? <p className="text-sm text-destructive">{errs.url}</p> : <p className="text-xs text-muted-foreground">Public http(s) address only. {editing && "Edits apply to future runs only."}</p>}
+        {errs.url ? <p className="text-sm text-destructive">{errs.url}</p> : <p className="text-xs text-muted-foreground">{allowedHosts ? `This demo accepts only these public hosts: ${allowedHosts}.` : "Public http(s) address only."} {editing && "Edits apply to future runs only."}</p>}
       </div>
       {errs.form && !errs.name && !errs.url && <p role="alert" className="text-sm text-destructive">{errs.form}</p>}
       <Button type="submit" disabled={busy}>{busy ? "Saving…" : submitLabel}</Button>

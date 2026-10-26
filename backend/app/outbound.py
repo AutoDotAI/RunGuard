@@ -6,6 +6,7 @@ untrusted URLs; public deployment additionally needs network egress controls.
 
 import http.client
 import ipaddress
+import os
 import queue
 import re
 import socket
@@ -88,6 +89,30 @@ def parse_public_url(value: str) -> PublicURL:
         target += "?" + parsed.query
     host_header = hostname if port is None else f"{hostname}:{port}"
     return PublicURL(value, parsed.scheme, hostname, expected_port, target, host_header)
+
+
+def allowed_public_hosts() -> frozenset[str]:
+    """Exact hostnames for the public demo; never accept suffixes or wildcards."""
+    raw = os.environ.get("RUNGUARD_ALLOWED_HOSTS", "")
+    hosts = [item.strip().lower() for item in raw.split(",") if item.strip()]
+    if len(hosts) > 5 or len(hosts) != len(set(hosts)):
+        raise ValueError("RUNGUARD_ALLOWED_HOSTS must contain at most five unique hostnames")
+    for host in hosts:
+        try:
+            valid = host == parse_public_url(f"https://{host}/").hostname and ":" not in host and "/" not in host
+        except OutboundError:
+            valid = False
+        if not valid:
+            raise ValueError("RUNGUARD_ALLOWED_HOSTS contains an invalid hostname")
+    if os.environ.get("RUNGUARD_PUBLIC_MODE") == "1" and not hosts:
+        raise ValueError("RUNGUARD_ALLOWED_HOSTS is required in public mode")
+    return frozenset(hosts)
+
+
+def enforce_allowed_host(parsed: PublicURL) -> None:
+    hosts = allowed_public_hosts()
+    if hosts and parsed.hostname not in hosts:
+        raise OutboundError("DESTINATION_BLOCKED", "Destination host is not available in this demo")
 
 
 def resolve_addresses(hostname: str) -> Sequence[str]:
@@ -190,7 +215,11 @@ def fetch(url: str, *, resolver: Callable[[str], Sequence[str]] = resolve_addres
     """
     deadline = time.monotonic() + FETCH_TIMEOUT_SECONDS
     parsed = parse_public_url(url)
-    address = _resolve_before_deadline(parsed.hostname, resolver, deadline)[0]
+    enforce_allowed_host(parsed)
+    addresses = _resolve_before_deadline(parsed.hostname, resolver, deadline)
+    # The production firewall permits IPv4 public HTTP(S) only. Prefer an A
+    # answer when one is available so dual-stack hosts remain usable there.
+    address = next((item for item in addresses if ":" not in item), addresses[0])
     if deadline <= time.monotonic():
         raise OutboundError("FETCH_TIMEOUT", "Destination request timed out")
     # http.client may make many successful recv calls inside getresponse/read;

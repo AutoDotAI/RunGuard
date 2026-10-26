@@ -29,4 +29,5 @@ def get_run_logs(run_id: UUID, request: Request, after_id: int = Query(0, ge=0),
 
 @router.post("/{run_id}/retry", response_model=EnqueuedRun, status_code=202)
 def retry_run(run_id: UUID, request: Request, owner: str = Depends(current_user)):
+    request.app.state.rate_limiter.enforce("run", owner)
     return request.app.state.store.retry_run(owner, str(run_id))

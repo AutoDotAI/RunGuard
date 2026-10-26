@@ -1,6 +1,7 @@
 """Owned worker, run, and log operations backed by SQLite."""
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from threading import RLock
 from typing import Callable
@@ -16,7 +17,7 @@ from .models import (
     DashboardSummary, EnqueuedRun, Run, RunLog, RunLogPage, RunPage,
     Worker, WorkerCreate, WorkerPage, WorkerUpdate,
 )
-from .outbound import OutboundError, parse_public_url
+from .outbound import OutboundError, enforce_allowed_host, parse_public_url
 
 
 SQLITE_MAX_ROWID = 2**63 - 1
@@ -41,7 +42,9 @@ class Problem(Exception):
 def validate_public_url(value: str) -> str:
     """Use the worker's URL syntax policy without DNS in the API request path."""
     try:
-        return parse_public_url(value).value
+        parsed = parse_public_url(value)
+        enforce_allowed_host(parsed)
+        return parsed.value
     except OutboundError as exc:
         raise Problem(422, "VALIDATION_ERROR", exc.message) from None
 
@@ -120,6 +123,10 @@ class PersistentStore:
             return self._public_worker(session, self._owned_worker(session, owner, worker_id))
 
     def create_worker(self, owner: str, payload: WorkerCreate) -> Worker:
+        if (os.environ.get("RUNGUARD_PUBLIC_MODE") == "1" and
+                os.environ.get("RUNGUARD_SUMMARIZER_AVAILABLE", "").lower() not in {"1", "true"} and
+                payload.kind == "url_summarizer"):
+            raise Problem(422, "FEATURE_UNAVAILABLE", "Live summaries are unavailable in this demo")
         url = validate_public_url(payload.url)
         with self.lock, self.users.sessions() as session:
             total = session.scalar(select(func.count()).select_from(WorkerRecord).where(

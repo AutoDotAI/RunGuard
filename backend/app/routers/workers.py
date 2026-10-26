@@ -38,4 +38,5 @@ def archive_worker(worker_id: UUID, request: Request, owner: str = Depends(curre
 
 @router.post("/{worker_id}/runs", response_model=EnqueuedRun, status_code=202)
 def run_worker(worker_id: UUID, request: Request, owner: str = Depends(current_user)):
+    request.app.state.rate_limiter.enforce("run", owner)
     return request.app.state.store.run_worker(owner, str(worker_id))

@@ -15,12 +15,14 @@ def token_response(request: Request, user: dict) -> TokenResponse:
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(payload: Credentials, request: Request):
+    request.app.state.rate_limiter.enforce("register", request.client.host if request.client else "unknown")
     user = request.app.state.store.create_user(payload.email, hash_password(payload.password))
     return token_response(request, user)
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: Credentials, request: Request):
+    request.app.state.rate_limiter.enforce("login", request.client.host if request.client else "unknown")
     user = request.app.state.store.user_by_email(payload.email)
     if user is None or not verify_password(payload.password, user["password_hash"]):
         raise Problem(401, "INVALID_CREDENTIALS", "Invalid email or password")
