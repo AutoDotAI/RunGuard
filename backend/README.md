@@ -24,8 +24,9 @@ local readiness template until external host/HTTPS/egress QA is complete.
 
 ```bash
 cd backend
-uv sync --extra test
+uv sync --locked --extra test
 export RUNGUARD_AUTH_SECRET="$(openssl rand -hex 32)"
+uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
@@ -54,7 +55,7 @@ To run the complete offline API → SQLite → worker integration journeys from 
 
 ```bash
 cd backend
-uv sync --extra test
+uv sync --locked --extra test
 uv run pytest -q tests/integration
 ```
 

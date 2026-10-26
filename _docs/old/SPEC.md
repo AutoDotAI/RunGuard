@@ -2,11 +2,41 @@
 
 **Version:** 1.1 (local authentication decision)
 **Date:** 2026-10-26  
-**Status:** Approved product scope; implementation pending  
+**Status:** Approved historical scope, with the local delivery amendment below
 **Project:** AI Dev Tools Zoomcamp 2026 Final Project  
 **Target:** Working, demonstrable MVP within approximately 12 hours of implementation
 
 > **Executive decision:** Build a small, authenticated platform that executes **two real, built-in worker types** on demand and makes their results, errors, and step-by-step logs inspectable. Use **Lovable-generated React**, **local email/password authentication in FastAPI**, **SQLite**, a **separate Python worker process**, and the **LiteLLM Python SDK**. No scheduling, external-agent execution, automatic job retries, or LangGraph in the MVP.
+
+> **Scope amendment — 2026-10-26:** The owner has no server or domain and
+> chose local delivery for now. The original public-host requirements below
+> remain a future target, not evidence of a live deployment. Current
+> acceptance for issues #23–#25 is an isolated local Compose security probe,
+> tested digest publication and host-free CD validation, and a private
+> two-release A→B→A rollback rehearsal. External HTTPS, actual-host egress,
+> CD promotion, and rollback proof are deferred to [issue #34](https://github.com/AutoDotAI/RunGuard/issues/34).
+> The URL Summarizer accepts an optional model/provider API key **on the
+> server**. A ChatGPT or agent subscription is not an application credential;
+> without a configured provider, summarizer runs fail visibly with
+> `LLM_ERROR`. The local responder and its demo action run offline.
+
+> **Provider amendment — 2026-10-26 (requested, pending implementation):**
+> RunGuard's default model path should invoke the host's already-authenticated
+> **Codex CLI** from a backend worker process; **Claude CLI** is a selectable
+> alternative. Retain the existing LiteLLM adapter as an optional server-side
+> API-key provider. A subscription is not an API key: CLI use relies on the
+> operator's existing *host* login, and no CLI auth directory, session token,
+> or API key may be copied or mounted into the web/API/worker containers.
+> The host-side invocation must have fixed commands and input/output limits,
+> timeouts, no arbitrary shell expansion, no inherited secrets beyond what
+> the chosen CLI requires, and sanitized logs/results. Website Monitor stays
+> deterministic and uses no model. The bounded responder's fixed inspections
+> and demo-only action remain its sole tools; optional CLI-assisted incident
+> analysis may produce a recommendation but may not expand its permissions.
+> Track these changes as small separate tasks [#35](https://github.com/AutoDotAI/RunGuard/issues/35)
+> and [#36](https://github.com/AutoDotAI/RunGuard/issues/36). Until those
+> tasks pass independent QA, current containerized summarizer behavior still
+> needs a configured LiteLLM provider key and no CLI-powered result is claimed.
 
 ---
 

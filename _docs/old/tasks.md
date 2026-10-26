@@ -1,6 +1,10 @@
 # RunGuard task backlog
 
-These are proposed work items; the public GitHub issues are the live tracker. The approved behavior is in `_docs/old/SPEC.md`; the current `backend/` is an in-memory demo and `frontend/` is the Lovable app.
+These are the original proposed work items; public GitHub issues are the live tracker. The approved behavior is in `_docs/old/SPEC.md`. The current backend persists accounts, workers, runs, logs, alerts, and responder audit in SQLite; `frontend/` remains the Lovable app.
+
+**Scope amendment — 2026-10-26:** The owner chose a local-only delivery because no server or domain is available. Issues #23–#25 now accept a local security/egress probe, CI-gated digest publication and host-free CD validation, and an isolated A→B→A rollback rehearsal. External HTTPS, actual-host CD, and rollback proof move to [issue #34](https://github.com/AutoDotAI/RunGuard/issues/34). Model-provider credentials are optional, server-side API keys; an agent/ChatGPT subscription is not an application credential. The original task wording below is preserved as historical planning context; the amended GitHub issue criteria govern completion.
+
+**Provider amendment — 2026-10-26:** The owner requested host-side CLI use of an existing Codex login as the default model path, with Claude CLI selectable and LiteLLM API-key access optional. This is not yet an implemented or verified RunGuard provider; see the approved spec amendment and tasks #35–#36 below. CLI login/session material must remain on the host, outside containers. Website Monitor remains deterministic and the responder's action set remains bounded.
 
 ## 1. Set up an empty project with a passing test
 Goal: Establish a clean-checkout baseline that starts and passes one automated test.
@@ -90,17 +94,17 @@ Description: Add container definitions and a one-time migration step so web, API
 Goal: Run all P0 checks automatically on pushes and pull requests.
 Description: Add a GitHub Actions workflow that installs locked dependencies, runs backend unit and integration tests, frontend tests and type checks, and builds the container images. Verify it passes without live credentials or paid services and document the same local commands.
 
-## 23. Deploy a safe public demo
+## 23. Deploy a safe public demo (original plan; public host deferred)
 Goal: Make the full frontend, API, and worker journey available over HTTPS.
-Description: Deploy one API replica and one worker on the same host with persistent SQLite, a TLS reverse proxy, protected secrets, limited origins, and outbound controls from `_docs/old/SPEC.md` §10.2. Verify signup, both real worker types, failure, logs, and retry from a clean browser before sharing the URL.
+Description: Deploy one API replica and one worker on the same host with persistent SQLite, a TLS reverse proxy, protected secrets, limited origins, and outbound controls from `_docs/old/SPEC.md` §10.2. Verify signup, both real worker types, failure, logs, and retry from a clean browser before sharing the URL. **Amended local gate:** [#23](https://github.com/AutoDotAI/RunGuard/issues/23) verifies the local security topology and egress probe; actual hosting is [#34](https://github.com/AutoDotAI/RunGuard/issues/34).
 
 ## 24. Add a controlled CD promotion path
 Goal: Deploy a tested, versioned image without an unreviewed production change.
-Description: Configure a development deployment from the main branch and a manual production promotion of an already tested image digest, as described in `_docs/old/SPEC.md` §14. Keep dev/prod configuration and SQLite volumes separate and record the deployed digest and smoke-test outcome.
+Description: Configure a development deployment from the main branch and a manual production promotion of an already tested image digest, as described in `_docs/old/SPEC.md` §14. Keep dev/prod configuration and SQLite volumes separate and record the deployed digest and smoke-test outcome. **Amended local gate:** [#24](https://github.com/AutoDotAI/RunGuard/issues/24) verifies digest publication, artifact provenance, promotion validation, and failure paths without SSH; actual host promotion is [#34](https://github.com/AutoDotAI/RunGuard/issues/34).
 
 ## 25. Test the rollback path
 Goal: Restore the prior known-good application version after a bad deployment.
-Description: Record the previous image digest, take a consistent SQLite backup before a risky migration, and document commands to redeploy that image without assuming migrations roll back. Exercise the procedure in a non-production environment and verify API health plus a user-journey smoke test afterward.
+Description: Record the previous image digest, take a consistent SQLite backup before a risky migration, and document commands to redeploy that image without assuming migrations roll back. Exercise the procedure in a non-production environment and verify API health plus a user-journey smoke test afterward. **Amended local gate:** [#25](https://github.com/AutoDotAI/RunGuard/issues/25) verifies a private A→B→A rehearsal and schema incompatibility denial; actual-host rollback proof is [#34](https://github.com/AutoDotAI/RunGuard/issues/34).
 
 ## 26. Instrument the user journey
 Goal: Show how enqueue, worker start, completion, and failure affect users.
@@ -121,3 +125,11 @@ Description: Give the agent fixed read tools for worker health, failed run, rece
 ## 30. Finish reviewer documentation and evidence
 Goal: Give a new reviewer exact instructions to run and inspect the delivered system.
 Description: Update the root README with verified install, environment, test, run, deployment, rollback, alert-trigger, and limitation steps, plus screenshots and real AI-development evidence. Distinguish implemented P0 from optional P1 work and check every claim against actual commands or artifacts.
+
+## 35. Add optional host CLI incident analysis
+Goal: Let the local responder generate a bounded recommendation through a host Codex CLI login, with Claude CLI selectable, without granting new actions.
+Description: Add a host-side backend worker adapter that passes only sanitized, fixed inspection evidence to a selected CLI with strict time and output limits and no shell interpolation or container auth mounts. Keep deterministic offline diagnosis as a fallback; test malicious evidence, unavailable CLI, timeout, audit persistence, and unchanged demo-only `resume_demo_worker` permission with fake CLI processes.
+
+## 36. Add host CLI summarizer provider
+Goal: Make the host Codex CLI the default local model path for URL Summarizer while preserving Claude CLI and LiteLLM as selectable alternatives.
+Description: Run a bounded host-side worker process against extracted, size-limited page text using fixed CLI arguments, a timeout, sanitized output, and only the host's existing CLI login. Keep CLI credentials out of Compose containers; test provider selection, missing login, timeout, malformed output, prompt injection in page text, and optional server-side LiteLLM API-key behavior with fake processes and model adapters, then verify one local result without a paid API call if CLI access is available.
