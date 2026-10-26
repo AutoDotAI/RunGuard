@@ -99,6 +99,12 @@ def test_monitor_api_restart_failure_retry_snapshot_and_archive(client, database
 
     with TestClient(create_app(secret=SECRET, database_url=database_url)) as restarted:
         assert run(restarted, alice, source_id)["status"] == "queued"
+        persisted_worker = restarted.get(f"{API}/workers/{worker_id}", headers=alice)
+        assert persisted_worker.status_code == 200
+        assert {key: persisted_worker.json()[key] for key in ("id", "name", "kind", "url")} == {
+            "id": worker_id, "name": "Original", "kind": "website_monitor",
+            "url": "https://example.com/check"}
+        assert [item["id"] for item in restarted.get(f"{API}/workers", headers=alice).json()["items"]] == [worker_id]
         assert fetched == []
         with WorkerRunner(database_url, {"website_monitor": lambda snapshot:
                           monitor(snapshot, fetch=failing_fetch)}) as runner:
@@ -144,8 +150,18 @@ def test_monitor_api_restart_failure_retry_snapshot_and_archive(client, database
 
     with TestClient(create_app(secret=SECRET, database_url=database_url)) as reopened:
         assert reopened.get(f"{API}/workers", headers=alice).json()["items"] == []
-        assert run(reopened, alice, source_id) == failed
-        assert run(reopened, alice, retry_id) == succeeded
+        original_snapshot = run(reopened, alice, source_id)
+        retry_snapshot = run(reopened, alice, retry_id)
+        assert original_snapshot == failed
+        assert retry_snapshot == succeeded
+        assert (original_snapshot["worker_name"], original_snapshot["kind"], original_snapshot["url"]) == (
+            "Original", "website_monitor", "https://example.com/check")
+        assert (retry_snapshot["worker_name"], retry_snapshot["kind"], retry_snapshot["url"],
+                retry_snapshot["retry_of_run_id"]) == (
+            "Original", "website_monitor", "https://example.com/check", source_id)
+        with reopened.app.state.users.sessions() as session:
+            assert json.loads(session.get(RunRecord, source_id).config_snapshot_json) == {"version": 1}
+            assert json.loads(session.get(RunRecord, retry_id).config_snapshot_json) == {"version": 1}
         assert logs(reopened, alice, source_id) == failed_logs
         assert reopened.get(f"{API}/runs", headers=alice).json()["total"] == 2
 
