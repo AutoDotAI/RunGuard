@@ -150,13 +150,17 @@ The expected response is HTTP `200` with `{"status":"ok"}`. See
 ## Local Docker Compose
 
 Requirements: Docker Engine with the Compose plugin, available host ports
-`3000` and `8000`, and Python 3 to run the optional smoke script. Run these
+`3000`, `8000`, and `5432`, and Python 3 to run the optional smoke scripts. Run these
 commands at the repository root. Generate `.env` once and **keep it** across
-restarts; the JWT signing secret must be at least 32 bytes. The file is ignored
-by Git.
+restarts; the JWT signing secret must be at least 32 bytes. Generate a separate
+PostgreSQL password. The file is ignored by Git. If you already have `.env`,
+keep its existing secret and append `RUNGUARD_POSTGRES_PASSWORD` instead of
+replacing the file. Set `RUNGUARD_POSTGRES_PORT` in `.env` if host port 5432 is
+occupied.
 
 ```bash
-python3 -c 'from pathlib import Path; import secrets; Path(".env").write_text("RUNGUARD_AUTH_SECRET=" + secrets.token_hex(32) + "\n")'
+umask 077
+python3 -c 'from pathlib import Path; import secrets; Path(".env").open("x").write("RUNGUARD_AUTH_SECRET=" + secrets.token_hex(32) + "\nRUNGUARD_POSTGRES_PASSWORD=" + secrets.token_hex(32) + "\n")'
 docker compose config --quiet
 docker compose up --build -d
 docker compose ps --all
@@ -167,8 +171,11 @@ Open <http://localhost:3000/signup>. The backend is reachable at
 <http://localhost:8000>; the frontend image is built with that **browser** API
 origin. New accounts show an empty dashboard. The `migrate` container must
 exit `0` before `api` and `worker` start, and `api` and `web` should be healthy.
-The API and exactly one worker share `runguard_data`, a local named SQLite
-volume. Both published ports bind to loopback only. This setup is for local
+The API and exactly one worker still share `runguard_data`, a local named SQLite
+volume until the schema and data cutover tasks are complete. PostgreSQL starts
+as a separate healthy service on the private `database` bridge network and stores
+data in `postgres_data`. Its host port binds to loopback only for a future host
+worker. The application ports also bind to loopback. This setup is for local
 use. Local production-style egress validation is tracked in
 [issue #23](https://github.com/AutoDotAI/RunGuard/issues/23); actual public
 hosting and external security proof are deferred to
@@ -183,6 +190,12 @@ docker compose restart
 docker compose ps --all
 docker compose down
 ```
+
+Run `make postgres-smoke` to start PostgreSQL in a random isolated Compose
+project, insert a test row, restart it, verify the row, and remove only that
+test project's volume. To inspect the normal project's database health, run
+`docker compose ps postgres`. Never use `docker compose down --volumes` on the
+normal project while the old SQLite volume is awaiting verified import.
 
 The smoke script creates a fresh account, confirms its empty state, creates a
 Website Monitor for `https://example.com/`, enqueues a run, observes the
@@ -206,8 +219,8 @@ full restart. A second `docker compose up --build -d` completed with the same
 data. A Summarizer run without a model ended as `failed` with `LLM_ERROR`.
 After `docker compose down`, the `runguard_runguard_data` volume remained.
 
-`docker compose down` retains `runguard_data`. **Only**
-`docker compose down --volumes` deletes the local database and accounts. To
+`docker compose down` retains `runguard_data` and `postgres_data`. **Only**
+`docker compose down --volumes` deletes local database volumes and accounts. To
 restart an existing installation, reuse the same `.env` and run
 `docker compose up --build -d`; do not regenerate the signing secret.
 `docker compose logs -f api worker web` follows service logs. A missing secret
@@ -252,10 +265,11 @@ The backend install uses the committed `uv.lock`; `--locked` rejects a stale
 lockfile. The frontend uses `package-lock.json` with `npm ci`, including in its
 Docker build. The existing `bun.lock` remains part of the Lovable source
 snapshot. In a **disposable checkout without an existing `.env`**, validate
-Compose with a temporary signing secret:
+Compose with temporary local credentials:
 
 ```bash
-python3 -c 'from pathlib import Path; import secrets; Path(".env").write_text("RUNGUARD_AUTH_SECRET=" + secrets.token_hex(32) + "\n")'
+umask 077
+python3 -c 'from pathlib import Path; import secrets; Path(".env").open("x").write("RUNGUARD_AUTH_SECRET=" + secrets.token_hex(32) + "\nRUNGUARD_POSTGRES_PASSWORD=" + secrets.token_hex(32) + "\n")'
 docker compose config --quiet
 rm -f .env
 ```

@@ -4,6 +4,9 @@ x-backend: &backend
   image: runguard-api:local
   build:
     context: ./backend
+  networks:
+    - default
+    - database
   volumes:
     - runguard_data:/data
   environment:
@@ -11,6 +14,26 @@ x-backend: &backend
     RUNGUARD_AUTH_SECRET: ${RUNGUARD_AUTH_SECRET:?Set a stable secret of at least 32 bytes in .env}
 
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${RUNGUARD_POSTGRES_DB:-runguard}
+      POSTGRES_USER: ${RUNGUARD_POSTGRES_USER:-runguard}
+      POSTGRES_PASSWORD: ${RUNGUARD_POSTGRES_PASSWORD:?Set a stable PostgreSQL password in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - database
+    ports:
+      - "127.0.0.1:${RUNGUARD_POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
   migrate:
     <<: *backend
     command:
@@ -74,3 +97,8 @@ services:
 
 volumes:
   runguard_data:
+  postgres_data:
+
+networks:
+  database:
+    driver: bridge
