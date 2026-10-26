@@ -107,7 +107,7 @@ def test_summarizer_truncates_before_single_model_call():
 def test_missing_model_stops_before_provider_call():
     llm = FakeLLM()
     outcome = summarize(SUMMARIZER, fetch=fake_html(), llm=llm, model="")
-    assert outcome.error_code == "LLM_ERROR"
+    assert outcome.error_code == "MODEL_PROVIDER_UNAVAILABLE"
     assert llm.calls == []
 
 

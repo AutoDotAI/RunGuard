@@ -6,6 +6,7 @@ only outbound website and model clients are faked.
 """
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -223,6 +224,38 @@ def test_summarizer_api_worker_result_and_provider_failure(client, database_url)
     assert failed["error"]["code"] == "LLM_ERROR"
     assert "private-provider-key" not in json.dumps(failed) + json.dumps(logs(client, alice, second_id))
     assert len(calls) == 2  # one provider call per run, no SDK retry or fallback
+
+
+@pytest.mark.parametrize("provider", ["codex", "claude"])
+def test_host_cli_summarizer_api_to_worker_to_api(client, database_url, tmp_path,
+                                                   monkeypatch, provider):
+    """A fake host CLI completes the durable queue journey without credentials."""
+    user = register(client, f"host-{provider}@example.com")
+    worker_id = create_worker(client, user, "url_summarizer", "Host article",
+                              "https://example.com/article")
+    page = outbound.FetchResponse(200, {"content-type": "text/html"},
+        b"<title>Recovery report</title><article><p>" +
+        b"The incident was detected, repaired, and reviewed by the response team. " * 3 +
+        b"</p></article>")
+    monkeypatch.setattr(outbound, "fetch", lambda _url: page)
+    cli = tmp_path / provider
+    cli.write_text("#!/usr/bin/env python3\nimport sys\n"
+                   "_ = sys.stdin.read()\n"
+                   "print('# Recovery report\\n- Detected.\\n- Repaired.\\n- Reviewed.')\n")
+    cli.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", provider)
+
+    run_id = enqueue(client, user, worker_id)
+    with WorkerRunner(database_url) as runner:
+        assert runner.run_once() is True
+        assert runner.run_once() is False
+    result = run(client, user, run_id)
+    assert result["status"] == "succeeded"
+    assert result["result"]["model"] == f"{provider}-cli"
+    assert "Repaired" in result["result"]["summary"]
+    assert [item["event"] for item in logs(client, user, run_id)][-2:] == [
+        "SUMMARY_SAVED", "RUN_SUCCEEDED"]
 
 
 def test_two_user_private_reads_mutations_and_lists(client):
