@@ -51,6 +51,7 @@ services:
     environment:
       RUNGUARD_OTEL_ENDPOINT: http://collector:4318
       RUNGUARD_ALERTMANAGER_URL: http://alertmanager:9093
+      RUNGUARD_ALLOWED_HOSTS: ${RUNGUARD_ALLOWED_HOSTS:-}
     depends_on:
       collector:
         condition: service_started
@@ -58,12 +59,38 @@ services:
         condition: service_started
 
   worker:
+    # The alternate demo command requires an explicit isolated rg-demo-* project.
+    command:
+      - sh
+      - -ec
+      - |
+        if [ "${RUNGUARD_DEMO_MODE:-false}" = "true" ]; then
+          exec python -m app.demo_worker serve
+        fi
+        exec python -m app.workers.runner
     environment:
       RUNGUARD_OTEL_ENDPOINT: http://collector:4318
       RUNGUARD_ALERTMANAGER_URL: http://alertmanager:9093
+      RUNGUARD_DEMO_MODE: ${RUNGUARD_DEMO_MODE:-false}
+      RUNGUARD_DEMO_PROJECT: ${RUNGUARD_DEMO_PROJECT:-}
+      RUNGUARD_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-}
+      RUNGUARD_ALLOWED_HOSTS: ${RUNGUARD_ALLOWED_HOSTS:-}
     depends_on:
       collector:
         condition: service_started
+
+  responder:
+    image: runguard-api:local
+    profiles: [responder]
+    command: ["python", "-m", "app.responder", "once"]
+    volumes:
+      - runguard_data:/data
+    environment:
+      RUNGUARD_DATABASE_URL: sqlite:////data/runguard.db
+      RUNGUARD_DEMO_MODE: ${RUNGUARD_DEMO_MODE:-false}
+      RUNGUARD_DEMO_PROJECT: ${RUNGUARD_DEMO_PROJECT:-}
+      RUNGUARD_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-}
+    restart: "no"
 
 volumes:
   runguard_telemetry:

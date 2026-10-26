@@ -74,7 +74,7 @@ class WorkflowSyntaxTests(unittest.TestCase):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as folder:
                 host = Path(folder)
                 (host / "deploy").mkdir()
-                for name in ("remote_deploy.sh", "release.py", "state.py"):
+                for name in ("remote_deploy.sh", "release.py", "state.py", "compose_overrides.py"):
                     shutil.copy2(ROOT / "deploy" / name, host / "deploy" / name)
                 (host / "deploy/smoke.py").write_text(
                     "import os\nfrom pathlib import Path\n"
