@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -7,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import TokenService
+from .db import UserRepository
 from .models import Health
 from .routers import auth, dashboard, runs, workers
 from .store import MemoryStore, Problem
@@ -19,10 +21,25 @@ def error_response(status: int, code: str, message: str, details: dict | None = 
     return JSONResponse(status_code=status, content={"error": error, "request_id": str(uuid4())})
 
 
-def create_app(store: MemoryStore | None = None, secret: str | None = None) -> FastAPI:
-    app = FastAPI(title="RunGuard API", version="1.0.0")
-    app.state.store = store if store is not None else MemoryStore()
-    app.state.tokens = TokenService(secret)
+def create_app(store: MemoryStore | None = None, secret: str | None = None,
+               database_url: str | None = None) -> FastAPI:
+    users = UserRepository(database_url)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if app.state.tokens is None:
+            app.state.tokens = TokenService(secret)
+        users.migrate()
+        try:
+            yield
+        finally:
+            users.close()
+
+    app = FastAPI(title="RunGuard API", version="1.0.0", lifespan=lifespan)
+    app.state.users = users
+    app.state.store = store if store is not None else MemoryStore(users)
+    # Keep module import side-effect free; uvicorn validates the configured secret at startup.
+    app.state.tokens = TokenService(secret) if secret is not None else None
     origins = os.environ.get("RUNGUARD_CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173")
     app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in origins.split(",") if origin.strip()],
                        allow_methods=["GET", "POST", "PATCH", "DELETE"],

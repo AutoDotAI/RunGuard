@@ -1,10 +1,10 @@
 # RunGuard
 
 RunGuard is being built in [public issues](https://github.com/AutoDotAI/RunGuard/issues).
-This checkout currently contains a **demo FastAPI backend** with process-local
-sample data and a passing health test, plus a source snapshot of the existing
+This checkout contains a FastAPI backend with SQLite-backed local accounts,
+process-local worker/run data, and a source snapshot of the existing
 Lovable frontend in `frontend/`. The frontend uses the backend's local
-registration and login endpoints; persistent SQLite accounts, worker execution,
+registration and login endpoints; worker/run persistence, worker execution,
 and frontend application-data integration are follow-up issues. Lovable editor
 commits still go
 to `AutoDotAI/screenshot-guard-studio`; see
@@ -44,8 +44,13 @@ uv run pytest -q
 Launch the local API from `backend/`:
 
 ```bash
+export RUNGUARD_AUTH_SECRET="$(openssl rand -hex 32)"
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+Keep this secret stable across restarts. Accounts live in `backend/data/runguard.db`
+by default; set `RUNGUARD_DATABASE_URL=sqlite:////absolute/path/runguard.db` to
+choose another local SQLite file.
 
 In another terminal, verify readiness:
 
@@ -54,4 +59,4 @@ curl -i http://127.0.0.1:8000/health
 ```
 
 The expected response is HTTP `200` with `{"status":"ok"}`. See
-[backend/README.md](backend/README.md) for demo API behavior and limitations.
+[backend/README.md](backend/README.md) for API behavior and limitations.

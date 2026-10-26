@@ -1,12 +1,12 @@
-"""Process-local demo state. Nothing in this module survives a restart."""
+"""Temporary worker/run state; account records live in SQLite."""
 
-from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from ipaddress import ip_address
 from threading import RLock
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+from .db import UserRepository
 from .models import (
     DashboardSummary, EnqueuedRun, Run, RunLog, RunLogPage, RunPage,
     Worker, WorkerCreate, WorkerPage, WorkerUpdate,
@@ -50,33 +50,25 @@ def validate_public_url(value: str) -> str:
 
 
 class MemoryStore:
-    def __init__(self):
+    def __init__(self, users: UserRepository):
         self.lock = RLock()
-        self.users: dict[str, dict] = {}
-        self.email_to_id: dict[str, str] = {}
+        self.users = users
         self.workers: dict[str, dict] = {}
         self.runs: dict[str, dict] = {}
         self.logs: list[dict] = []
         self.next_log_id = 1
 
     def create_user(self, email: str, password_hash: str) -> dict:
-        with self.lock:
-            if email in self.email_to_id:
-                raise Problem(409, "ACCOUNT_EXISTS", "An account with this email already exists")
-            user = {"id": str(uuid4()), "email": email, "password_hash": password_hash}
-            self.users[user["id"]] = user
-            self.email_to_id[email] = user["id"]
-            self._seed_user(user["id"])
-            return deepcopy(user)
+        user = self.users.create(email, password_hash, now())
+        if user is None:
+            raise Problem(409, "ACCOUNT_EXISTS", "An account with this email already exists")
+        return user
 
     def user_by_email(self, email: str) -> dict | None:
-        with self.lock:
-            user_id = self.email_to_id.get(email)
-            return deepcopy(self.users[user_id]) if user_id else None
+        return self.users.by_email(email)
 
     def user_by_id(self, user_id: str) -> dict | None:
-        with self.lock:
-            return deepcopy(self.users.get(user_id))
+        return self.users.by_id(user_id)
 
     def _append_log(self, owner: str, run_id: str, event: str, message: str, level: str = "INFO", timestamp: str | None = None):
         self.logs.append({"id": self.next_log_id, "owner": owner, "run_id": run_id,
@@ -215,25 +207,3 @@ class MemoryStore:
                                     success_rate=succeeded / len(completed) if completed else None,
                                     avg_duration_ms=round(sum(r["duration_ms"] or 0 for r in completed) / len(completed)) if completed else None,
                                     recent_runs=[self._public_run(r) for r in all_runs[:10]])
-
-    def _seed_user(self, owner: str):
-        """Populate each new account with clearly labelled sample history."""
-        monitor = self.create_worker(owner, WorkerCreate(name="Demo: website monitor", kind="website_monitor", url="https://example.com/"))
-        summarizer = self.create_worker(owner, WorkerCreate(name="Demo: URL summarizer", kind="url_summarizer", url="https://example.org/"))
-        for worker, status, result, error, event in (
-            (monitor, "succeeded", {"http_status": 200, "response_time_ms": 186, "healthy": True}, None, "DEMO_MONITOR_SUCCEEDED"),
-            (monitor, "failed", {"http_status": 503, "response_time_ms": 241, "healthy": False},
-             {"code": "HTTP_STATUS_ERROR", "message": "Demo response: HTTP 503"}, "DEMO_MONITOR_FAILED"),
-            (summarizer, "succeeded", {"source_url": summarizer.url, "page_title": "Example page",
-                                      "summary": "## Demo summary\n- This is seeded sample content.\n- No page or model was called.",
-                                      "model": "demo/seeded", "input_was_truncated": False}, None, "DEMO_SUMMARY_SUCCEEDED"),
-        ):
-            timestamp = now()
-            run = {"id": str(uuid4()), "owner": owner, "worker_id": worker.id, "worker_name": worker.name,
-                   "kind": worker.kind, "status": status, "url": worker.url, "created_at": timestamp,
-                   "started_at": timestamp, "finished_at": timestamp, "duration_ms": 186,
-                   "result": result, "error": error, "retry_of_run_id": None}
-            self.runs[run["id"]] = run
-            self._append_log(owner, run["id"], "DEMO_SEEDED", "Sample run; no network or model request was made")
-            self._append_log(owner, run["id"], event, "Sample run completed" if status == "succeeded" else "Sample run failed",
-                             "INFO" if status == "succeeded" else "ERROR")

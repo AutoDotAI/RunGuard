@@ -133,9 +133,10 @@ def test_openapi_has_exact_p0_operations_resolved_references_and_explicit_respon
         assert query_names(document, key[1], operation) == QUERY.get(key, set()), key
 
 
-def test_fastapi_generated_openapi_has_matching_operations_auth_and_response_fields():
+def test_fastapi_generated_openapi_has_matching_operations_auth_and_response_fields(tmp_path):
     expected = contract()
-    with TestClient(create_app(secret="contract-test-secret-at-least-32-bytes")) as client:
+    with TestClient(create_app(secret="contract-test-secret-at-least-32-bytes",
+                               database_url=f"sqlite:///{tmp_path / 'contract.db'}")) as client:
         response = client.get("/openapi.json")
     assert response.status_code == 200
     generated = response.json()
@@ -161,7 +162,7 @@ def test_fastapi_generated_openapi_has_matching_operations_auth_and_response_fie
     assert set(generated["components"]["schemas"]["AuthUser"]["required"]) == {"id", "email"}
 
 
-def test_frontend_shared_types_and_error_envelope_match_required_fields():
+def test_frontend_shared_types_and_error_envelope_match_required_fields(tmp_path):
     document = contract()
     for schema, interface in SHARED.items():
         required = set(document["components"]["schemas"][schema].get("required", []))
@@ -175,7 +176,8 @@ def test_frontend_shared_types_and_error_envelope_match_required_fields():
     assert set(document["components"]["schemas"]["RunStatus"]["enum"]) == {"queued", "running", "succeeded", "failed"}
     assert set(document["components"]["schemas"]["WorkerKind"]["enum"]) == {"website_monitor", "url_summarizer"}
     assert set(document["components"]["schemas"]["LogLevel"]["enum"]) == {"INFO", "WARN", "ERROR"}
-    with TestClient(create_app(secret="contract-test-secret-at-least-32-bytes")) as client:
+    with TestClient(create_app(secret="contract-test-secret-at-least-32-bytes",
+                               database_url=f"sqlite:///{tmp_path / 'contract.db'}")) as client:
         unauthorized = client.get("/api/v1/workers")
     assert unauthorized.status_code == 401
     assert set(unauthorized.json()) == {"error", "request_id"}

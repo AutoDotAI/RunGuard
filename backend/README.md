@@ -1,21 +1,19 @@
-# RunGuard demo API
+# RunGuard API
 
-This is a process-local backend for the current OpenAPI contract. Registering a
-user seeds two sample workers and three clearly labelled sample runs. Passwords
-are stored as salted PBKDF2 hashes; registration and login return an eight-hour
-HMAC-signed JWT. The signing key is random on startup unless
-`RUNGUARD_AUTH_SECRET` is set. All users, runs, and tokens are lost or invalidated
-on restart. Queued runs remain queued because this demo has no execution worker.
-The sample summaries and logs are examples, not real HTTP or model results.
+The API stores local accounts in SQLite through SQLAlchemy and Alembic. New accounts have no workers or runs. Passwords are salted PBKDF2-HMAC-SHA256 hashes. Register and login return an eight-hour HS256 bearer JWT. Set a stable signing secret of at least 32 bytes so tokens remain valid after an API restart. Keep the secret outside Git.
+
+Workers, runs, and logs currently use process-local memory until Issue #6. Queued runs remain queued until the dedicated execution worker is implemented.
 
 ```bash
 cd backend
 uv sync --extra test
+export RUNGUARD_AUTH_SECRET="$(openssl rand -hex 32)"
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-In another terminal, register a local account and use the returned
-`access_token` as `Authorization: Bearer <token>` on `/api/v1/*` routes:
+The default database is `backend/data/runguard.db`; startup applies the Alembic migration. To choose another local file, set `RUNGUARD_DATABASE_URL=sqlite:////absolute/path/runguard.db`. Reuse the same database URL and signing secret after restart. Do not regenerate the secret for each launch.
+
+Register and use the returned `access_token` as `Authorization: Bearer <token>` on protected `/api/v1/*` routes:
 
 ```bash
 curl -sS -X POST http://127.0.0.1:8000/api/v1/auth/register \
@@ -23,9 +21,4 @@ curl -sS -X POST http://127.0.0.1:8000/api/v1/auth/register \
   -d '{"email":"demo@example.com","password":"DemoPass123!"}'
 ```
 
-Run tests with `cd backend && uv run pytest -q`. API documentation is at
-`http://127.0.0.1:8000/docs`. The Lovable frontend still selects its local mock
-client; it has not yet been wired to this API. This backend is for local demo
-work and does not satisfy the approved persistent SQLite accounts/data, worker,
-or deployment security gates described in the project backlog issues. See the repository-root
-`openapi.yaml` for this demo API's current contract.
+Run `uv run pytest -q` from `backend/` for isolated tests. API documentation is at `http://127.0.0.1:8000/docs`; the contract is in repository-root `openapi.yaml`.

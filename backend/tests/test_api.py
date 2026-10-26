@@ -7,12 +7,14 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from app.auth import ISSUER
 from app.main import create_app
 
 
 @pytest.fixture
-def client():
-    with TestClient(create_app(secret="test-only-signing-secret-32-bytes-minimum")) as test_client:
+def client(tmp_path):
+    with TestClient(create_app(secret="test-only-signing-secret-32-bytes-minimum",
+                               database_url=f"sqlite:///{tmp_path / 'runguard.db'}")) as test_client:
         yield test_client
 
 
@@ -39,7 +41,7 @@ def test_health_returns_ready_without_auth_or_external_services(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_registration_hashes_password_and_seeds_visible_demo_history(client):
+def test_registration_hashes_password_and_starts_with_empty_history(client):
     identity = register(client)
     UUID(identity["user"]["id"])
     assert identity["token_type"] == "bearer"
@@ -48,13 +50,8 @@ def test_registration_hashes_password_and_seeds_visible_demo_history(client):
     assert stored["password_hash"].startswith("pbkdf2_sha256$")
     assert "CorrectHorse123!" not in stored["password_hash"]
     workers, runs = seeded(client, identity["access_token"])
-    assert len(workers) == 2
-    assert len(runs) == 3
-    assert {r["status"] for r in runs} == {"succeeded", "failed"}
-    assert any(r["result"] and r["result"].get("model") == "demo/seeded" for r in runs)
-    logs = client.get(f"/api/v1/runs/{runs[0]['id']}/logs", headers=bearer(identity["access_token"]))
-    assert logs.status_code == 200
-    assert logs.json()["items"][0]["event"] == "DEMO_SEEDED"
+    assert workers == []
+    assert runs == []
 
 
 def test_login_token_validation_and_all_protected_paths(client):
@@ -62,8 +59,9 @@ def test_login_token_validation_and_all_protected_paths(client):
     assert client.post("/api/v1/auth/login", json={"email": "alice@example.com", "password": "wrong-password"}).status_code == 401
     login = client.post("/api/v1/auth/login", json={"email": "ALICE@example.com", "password": "CorrectHorse123!"})
     assert login.status_code == 200
-    worker_id = seeded(client, identity["access_token"])[0][0]["id"]
-    run_id = seeded(client, identity["access_token"])[1][0]["id"]
+    worker_id = client.post("/api/v1/workers", headers=bearer(identity["access_token"]),
+                            json={"name": "Private", "kind": "website_monitor", "url": "https://example.com/"}).json()["id"]
+    run_id = client.post(f"/api/v1/workers/{worker_id}/runs", headers=bearer(identity["access_token"])).json()["run_id"]
     protected = [
         ("get", "/api/v1/workers"), ("post", "/api/v1/workers"),
         ("get", f"/api/v1/workers/{worker_id}"), ("patch", f"/api/v1/workers/{worker_id}"),
@@ -77,10 +75,11 @@ def test_login_token_validation_and_all_protected_paths(client):
         assert response.status_code == 401, (method, path, response.text)
         assert response.json()["error"]["code"] == "UNAUTHORIZED"
     assert client.get("/health").json() == {"status": "ok"}
-    forged = jwt.encode({"sub": identity["user"]["id"], "iss": "runguard-demo", "aud": "runguard-api", "exp": 4102444800}, "wrong-secret-also-long-enough-for-tests", algorithm="HS256")
+    assert "access_token" not in client.get("/api/v1/workers", headers=bearer(identity["access_token"])).json()
+    forged = jwt.encode({"sub": identity["user"]["id"], "iss": ISSUER, "aud": "runguard-api", "exp": 4102444800}, "wrong-secret-also-long-enough-for-tests", algorithm="HS256")
     assert client.get("/api/v1/workers", headers=bearer(forged)).status_code == 401
     assert client.get("/api/v1/workers", headers=bearer("garbage")).status_code == 401
-    expired = jwt.encode({"sub": identity["user"]["id"], "iss": "runguard-demo", "aud": "runguard-api",
+    expired = jwt.encode({"sub": identity["user"]["id"], "iss": ISSUER, "aud": "runguard-api",
                           "iat": datetime.now(timezone.utc) - timedelta(hours=9),
                           "exp": datetime.now(timezone.utc) - timedelta(hours=1)},
                          "test-only-signing-secret-32-bytes-minimum", algorithm="HS256")
@@ -96,6 +95,7 @@ def test_two_users_cannot_read_or_mutate_each_others_data(client):
     run_id = client.post(f"/api/v1/workers/{worker_id}/runs", headers=a).json()["run_id"]
     assert worker_id not in [w["id"] for w in client.get("/api/v1/workers", headers=b).json()["items"]]
     assert run_id not in [r["id"] for r in client.get("/api/v1/runs", headers=b).json()["items"]]
+    assert client.get("/api/v1/dashboard/summary", headers=b).json()["recent_runs"] == []
     for method, path, body in [
         ("get", f"/api/v1/workers/{worker_id}", None),
         ("patch", f"/api/v1/workers/{worker_id}", {"name": "Stolen"}),
@@ -131,32 +131,41 @@ def test_crud_queue_logs_retry_snapshot_and_archive(client):
     snapshot = client.get(f"/api/v1/runs/{run_id}", headers=h).json()
     assert snapshot["url"] == "https://example.com/" and snapshot["worker_name"] == "New check"
     assert client.post(f"/api/v1/runs/{run_id}/retry", headers=h).status_code == 409
-    failed = next(r for r in seeded(client, token)[1] if r["status"] == "failed")
-    failed_worker_id = failed["worker_id"]
-    assert client.patch(f"/api/v1/workers/{failed_worker_id}", headers=h,
-                        json={"url": "https://www.python.org/"}).status_code == 200
-    retry = client.post(f"/api/v1/runs/{failed['id']}/retry", headers=h)
+    client.app.state.store.runs[run_id]["status"] = "failed"
+    client.app.state.store.runs[run_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+    client.app.state.store.runs[run_id]["duration_ms"] = 10
+    retry = client.post(f"/api/v1/runs/{run_id}/retry", headers=h)
     assert retry.status_code == 202
     retry_run = client.get(f"/api/v1/runs/{retry.json()['run_id']}", headers=h).json()
-    assert retry_run["retry_of_run_id"] == failed["id"]
-    assert retry_run["url"] == failed["url"]
-    assert client.delete(f"/api/v1/workers/{failed_worker_id}", headers=h).status_code == 204
-    assert client.get(f"/api/v1/workers/{failed_worker_id}", headers=h).status_code == 404
-    assert client.get(f"/api/v1/runs/{failed['id']}", headers=h).status_code == 200
-    assert client.post(f"/api/v1/runs/{failed['id']}/retry", headers=h).json()["error"]["code"] == "WORKER_ARCHIVED"
+    assert retry_run["retry_of_run_id"] == run_id
+    assert retry_run["url"] == snapshot["url"]
+    assert client.delete(f"/api/v1/workers/{worker_id}", headers=h).status_code == 204
+    assert client.get(f"/api/v1/workers/{worker_id}", headers=h).status_code == 404
+    assert client.get(f"/api/v1/runs/{run_id}", headers=h).status_code == 200
+    assert client.post(f"/api/v1/runs/{run_id}/retry", headers=h).json()["error"]["code"] == "WORKER_ARCHIVED"
 
 
 def test_pagination_dashboard_and_validation(client):
     token = register(client)["access_token"]
     h = bearer(token)
+    worker_ids = []
+    for number in (1, 2):
+        created = client.post("/api/v1/workers", headers=h,
+                              json={"name": f"Check {number}", "kind": "website_monitor",
+                                    "url": "https://example.com/"})
+        worker_ids.append(created.json()["id"])
     page = client.get("/api/v1/workers", headers=h, params={"limit": 1, "offset": 1}).json()
     assert page["total"] == 2 and len(page["items"]) == 1 and page["limit"] == 1 and page["offset"] == 1
-    runs = client.get("/api/v1/runs", headers=h, params={"page": 2, "page_size": 2}).json()
-    assert runs["total"] == 3 and len(runs["items"]) == 1 and runs["offset"] == 2
+    for status, worker_id in zip(("succeeded", "failed"), worker_ids):
+        run_id = client.post(f"/api/v1/workers/{worker_id}/runs", headers=h).json()["run_id"]
+        client.app.state.store.runs[run_id].update(status=status, duration_ms=100,
+                                                    finished_at=datetime.now(timezone.utc).isoformat())
+    runs = client.get("/api/v1/runs", headers=h, params={"page": 2, "page_size": 1}).json()
+    assert runs["total"] == 2 and len(runs["items"]) == 1 and runs["offset"] == 1
     dashboard = client.get("/api/v1/dashboard/summary", headers=h).json()
-    assert dashboard["window"] == "24h" and dashboard["total"] == 3
-    assert dashboard["succeeded"] == 2 and dashboard["failed"] == 1
-    assert dashboard["success_rate"] == pytest.approx(2 / 3)
+    assert dashboard["window"] == "24h" and dashboard["total"] == 2
+    assert dashboard["succeeded"] == 1 and dashboard["failed"] == 1
+    assert dashboard["success_rate"] == pytest.approx(0.5)
     for url in ["http://127.0.0.1/", "https://localhost/", "file:///etc/passwd", "https://user:pass@example.com/", "https://example.com:8080/"]:
         response = client.post("/api/v1/workers", headers=h, json={"name": "Bad", "kind": "website_monitor", "url": url})
         assert response.status_code == 422, (url, response.text)

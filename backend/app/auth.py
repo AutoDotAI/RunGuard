@@ -1,4 +1,4 @@
-"""Local demo authentication; tokens are invalidated when the process restarts."""
+"""Local password hashing and bearer-token authentication."""
 
 import hashlib
 import hmac
@@ -14,7 +14,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from .store import Problem
 
 
-ISSUER = "runguard-demo"
+ISSUER = "runguard"
 AUDIENCE = "runguard-api"
 bearer = HTTPBearer(auto_error=False, scheme_name="localBearer")
 
@@ -38,7 +38,9 @@ def verify_password(password: str, stored: str) -> bool:
 
 class TokenService:
     def __init__(self, secret: str | None = None):
-        self.secret = secret or os.environ.get("RUNGUARD_AUTH_SECRET") or secrets.token_urlsafe(48)
+        self.secret = secret or os.environ.get("RUNGUARD_AUTH_SECRET")
+        if self.secret is None:
+            raise ValueError("RUNGUARD_AUTH_SECRET must be configured")
         if len(self.secret.encode()) < 32:
             raise ValueError("RUNGUARD_AUTH_SECRET must contain at least 32 bytes")
 
