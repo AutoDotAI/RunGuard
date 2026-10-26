@@ -1,0 +1,92 @@
+# Local RunGuard commands. Public deployment is deferred to issue #34.
+.DEFAULT_GOAL := help
+
+UV ?= uv
+NPM ?= npm
+PYTHON ?= python3
+DOCKER ?= docker
+OBS_PROJECT ?= rg-observe-demo
+DEMO_PROJECT ?=
+DEMO_MODE ?=
+export OBS_PROJECT DEMO_PROJECT DEMO_MODE
+
+OBS_COMPOSE = $(DOCKER) compose -p "$$OBS_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability
+STALL_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml --profile observability
+RESPONDER_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml -f compose.responder.yaml --profile observability --profile responder
+
+.PHONY: help install install-backend install-frontend test test-backend test-frontend typecheck build build-frontend build-images check migrate api worker frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down cd-check rollback-rehearsal
+
+help: ## List every Makefile target; no install or service start
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-24s %s\n", $$1, $$2}' Makefile
+
+install: install-backend install-frontend ## Install locked backend and frontend dependencies
+install-backend: ## Install backend dependencies with uv.lock
+	cd backend && $(UV) sync --locked --extra test
+install-frontend: ## Install frontend dependencies with package-lock.json
+	cd frontend && $(NPM) ci --no-audit --no-fund
+
+test: test-backend test-frontend ## Run offline backend and frontend suites
+test-backend: ## Run backend pytest (dependencies must be installed)
+	cd backend && $(UV) run --no-sync pytest -q
+test-frontend: ## Run frontend Vitest suite
+	cd frontend && $(NPM) test
+typecheck: ## Type-check frontend TypeScript
+	cd frontend && npx tsc --noEmit
+build: build-frontend ## Build the frontend application
+build-frontend: ## Build frontend with Vite
+	cd frontend && $(NPM) run build
+build-images: ## Build local backend and web Docker images
+	$(DOCKER) build -t runguard-api:local ./backend
+	$(DOCKER) build -t runguard-web:local ./frontend
+check: install test typecheck build cd-check ## Install and run all local code and CD checks
+
+migrate: ## Apply Alembic migrations to the selected local SQLite database
+	cd backend && $(UV) run alembic upgrade head
+api: ## Start loopback API in this terminal; export a stable RUNGUARD_AUTH_SECRET first
+	@test -n "$$RUNGUARD_AUTH_SECRET" || { echo 'Set stable RUNGUARD_AUTH_SECRET (at least 32 bytes) first' >&2; exit 2; }
+	cd backend && $(UV) run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
+worker: ## Start one backend worker in this terminal; use the API database URL
+	cd backend && $(UV) run python -m app.workers.runner
+frontend: ## Start local Vite frontend in this terminal; configure frontend/.env.local
+	cd frontend && $(NPM) run dev
+
+compose-config: ## Validate local Compose configuration (.env with stable secret required)
+	$(DOCKER) compose config --quiet
+compose-up: ## Build/start local API, worker and web; retain SQLite volume
+	$(DOCKER) compose up --build -d
+compose-status: ## Show local Compose service status
+	$(DOCKER) compose ps --all
+compose-logs: ## Show last 50 API, worker and web log lines
+	$(DOCKER) compose logs --tail=50 api worker web
+compose-down: ## Stop local Compose stack without deleting SQLite volume
+	$(DOCKER) compose down
+compose-smoke: ## Run API-to-worker smoke (uses example.com outbound HTTPS)
+	$(PYTHON) scripts/compose_smoke.py
+
+observability-up: ## Start loopback Grafana/collector and app for OBS_PROJECT
+	$(OBS_COMPOSE) up --build -d
+observability-smoke: ## Run offline telemetry smoke for OBS_PROJECT
+	RUNGUARD_COMPOSE_PROJECT="$$OBS_PROJECT" $(PYTHON) scripts/observability_smoke.py
+observability-down: ## Stop observability stack; retain application and telemetry volumes
+	$(OBS_COMPOSE) down
+
+guard-demo: ## Validate DEMO_MODE=true and a dedicated DEMO_PROJECT=rg-demo-<name>
+	@test "$$DEMO_MODE" = true || { echo 'Set DEMO_MODE=true for a local demo only' >&2; exit 2; }
+	@printf '%s\n' "$$DEMO_PROJECT" | grep -Eq '^rg-demo-[a-z0-9]([a-z0-9-]*[a-z0-9])?$$' || { echo 'Set DEMO_PROJECT=rg-demo-<safe-name>' >&2; exit 2; }
+demo-stall-up: guard-demo ## Start isolated paused-worker drill stack (requires .env)
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(STALL_COMPOSE) up --build -d
+demo-stall-smoke: guard-demo ## Run gated >60s stalled-worker alert drill
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(PYTHON) scripts/demo_stall_smoke.py
+demo-stall-down: guard-demo ## Stop gated drill stack without deleting its volume
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(STALL_COMPOSE) down
+responder-up: guard-demo ## Start isolated responder drill stack (requires .env)
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(RESPONDER_COMPOSE) up --build -d
+responder-smoke: guard-demo ## Run gated alert-to-responder-to-recovery drill
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(PYTHON) scripts/responder_smoke.py
+responder-down: guard-demo ## Stop responder drill stack without deleting its volume
+	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(RESPONDER_COMPOSE) down
+
+cd-check: ## Validate local CD workflows and fail-closed paths; no deployment
+	sh deploy/test_cd.sh
+rollback-rehearsal: ## Rehearse A-to-B-to-A rollback locally; no public host operation
+	bash deploy/rehearse_rollback.sh

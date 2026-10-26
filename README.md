@@ -14,6 +14,40 @@ commits still go
 to `AutoDotAI/screenshot-guard-studio`; see
 [_docs/lovable-sync.md](_docs/lovable-sync.md) before importing later changes.
 
+## Makefile command index
+
+Run `make` or `make help` to list every target without installing software or
+starting a service. The Makefile wraps the commands below; it does not create
+or print credentials. Install [uv](https://docs.astral.sh/uv/), Python 3.12+,
+Node.js/npm, and `make`. Docker Engine with Compose is needed for container
+targets; Python 3 is needed for the optional smoke scripts.
+
+For separate local processes, use `make install`, then export one stable
+`RUNGUARD_AUTH_SECRET` of at least 32 bytes and configure
+`frontend/.env.local` from its example. Run `make migrate`, `make api`,
+`make worker`, and `make frontend` in separate terminals. The API binds to
+127.0.0.1:8000; the frontend opens on the local Vite port. `make check` installs
+locked dependencies and runs backend/frontend tests, TypeScript, the frontend
+build, and local CD validation. Individual targets include `make test-backend`,
+`make test-frontend`, `make typecheck`, `make build`, and `make cd-check`.
+
+For the local container stack, configure the ignored root `.env` as shown
+below, then run `make compose-config`, `make compose-up`, and
+`make compose-status`. `make compose-smoke` exercises the API-to-worker path
+and may contact `example.com`; `make compose-logs` shows bounded logs, and
+`make compose-down` stops services **without deleting the SQLite volume**.
+The optional local telemetry profile uses `make observability-up`,
+`make observability-smoke`, and `make observability-down`.
+
+The alert and responder drills need a new isolated project and an explicit
+demo gate. For example, `make demo-stall-up DEMO_MODE=true
+DEMO_PROJECT=rg-demo-mytest`, followed by `make demo-stall-smoke` and
+`make demo-stall-down` with the same variables. Substitute `responder-*` for
+the bounded responder drill. These commands reject a missing or unsafe
+project name before changing Compose state. `make rollback-rehearsal` runs
+the local A→B→A exercise; it does not roll back a public host. Public deploy
+and actual-host rollback remain deferred to [#34](https://github.com/AutoDotAI/RunGuard/issues/34).
+
 ## Frontend baseline
 
 Requirements: Node.js and npm. From a fresh checkout:
