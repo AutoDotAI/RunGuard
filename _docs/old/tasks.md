@@ -204,6 +204,6 @@ Description: Add a PostgreSQL service to CI for backend integration tests while 
 Goal: Show which course project requirements the local deliverable actually meets.
 Description: Compare the delivered app and evidence with the [Zoomcamp project brief](https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project), covering tests, telemetry, alert trigger, responder, architecture, and reviewer instructions. Mark public deployment and CD as deferred under issue #34 and the on-call agent as demo-bounded where applicable; link only verified screenshots, CI runs, and local command outputs.
 
-## 54. Obtain external peer reviews
-Goal: Complete the course's human review requirement with real independent feedback.
-Description: Ask three real Zoomcamp peers to review the final repository and submit their required reviews through the course process; record links or evidence permitted by the course. Address actionable findings in separate issues and never count coding-agent QA as an external peer review.
+## 54. Evaluate three other Zoomcamp projects
+Goal: Complete the course's required peer reviewing of other participants' work.
+Description: Follow the [official peer-review rule](https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/blob/main/project/README.md#peer-reviewing) and course-platform workflow to evaluate three projects submitted by other participants against the rubric. Record the permitted submission evidence and deadlines; reviews received on RunGuard and coding-agent QA do not count toward this obligation.
