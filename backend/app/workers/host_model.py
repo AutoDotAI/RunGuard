@@ -5,6 +5,7 @@ operator's home directory; this module never reads or copies them.
 """
 
 import os
+import re
 import selectors
 import signal
 import subprocess
@@ -68,7 +69,7 @@ class HostCLIClient:
             raise ValueError("Empty model response")
         lines = answer.splitlines()
         bullets = sum(line.lstrip().startswith(("- ", "* ")) for line in lines[1:])
-        if not lines[0].lstrip().startswith("# ") or not 3 <= bullets <= 6:
+        if not re.match(r"^#{1,6}\s+\S", lines[0].lstrip()) or not 3 <= bullets <= 6:
             raise ValueError("Invalid model response")
         return answer
 

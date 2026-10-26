@@ -115,6 +115,7 @@ def test_cli_timeout_and_output_cap_kill_child(tmp_path, monkeypatch):
 
 def test_exited_cli_leaves_no_running_stdout_child(tmp_path, monkeypatch):
     from app.workers import host_model
+    import time
 
     pid_file = tmp_path / "child.pid"
     _fake_cli(tmp_path, "codex",
@@ -126,10 +127,15 @@ def test_exited_cli_leaves_no_running_stdout_child(tmp_path, monkeypatch):
         HostCLIClient("codex").complete(model="codex-cli", system="system", user="page")
     child_state = Path(f"/proc/{pid_file.read_text()}/stat")
     # It may briefly be a zombie awaiting init, but it must not keep running.
-    try:
-        state = child_state.read_text().split()[2]
-    except FileNotFoundError:
-        state = "gone"
+    deadline = time.monotonic() + 1
+    while True:
+        try:
+            state = child_state.read_text().split()[2]
+        except FileNotFoundError:
+            state = "gone"
+        if state in {"Z", "gone"} or time.monotonic() >= deadline:
+            break
+        time.sleep(0.01)
     assert state in {"Z", "gone"}
 
 
@@ -142,3 +148,11 @@ def test_hostile_page_is_data_not_shell(tmp_path, monkeypatch):
     answer = HostCLIClient("codex").complete(model="codex-cli", system="Summarize safely", user=prompt)
     assert answer.startswith("# Safe")
     assert not marker.exists()
+
+
+def test_cli_accepts_markdown_heading_levels(tmp_path, monkeypatch):
+    _fake_cli(tmp_path, "codex",
+              "print('### Report\\n- One.\\n- Two.\\n- Three.')\n")
+    monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ['PATH']}")
+    answer = HostCLIClient("codex").complete(model="codex-cli", system="Summarize", user="page")
+    assert answer.startswith("### Report")
