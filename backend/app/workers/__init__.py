@@ -1,0 +1,1 @@
+"""Independent SQLite queue worker."""
