@@ -1,11 +1,22 @@
 # RunGuard
 
+RunGuard is a **local-first** React/FastAPI application. The current verified
+delivery is one Docker Compose host with SQLite, a separate worker, local
+telemetry and alerting, and a bounded offline demo responder. There is no
+public URL or live provider-backed summarizer result. Public-host proof is
+deferred to [#34](https://github.com/AutoDotAI/RunGuard/issues/34).
+
+Start with the [local reviewer guide](docs/reviewer-guide.md) for the complete
+signup-to-recovery journey and [QA evidence](docs/reviewer-evidence.md) for
+issue-by-issue results. The historical spec has a dated local-scope
+amendment in [_docs/old/SPEC.md](_docs/old/SPEC.md).
+
 Deployment backup, manual rollback, and local rehearsal commands are in
 [docs/deployment.md](docs/deployment.md).
 Local metrics, logs, traces, and an offline API-to-worker smoke are in
 [docs/observability.md](docs/observability.md).
 
-RunGuard is being built in [public issues](https://github.com/AutoDotAI/RunGuard/issues).
+RunGuard's work and independent QA are recorded in [public issues](https://github.com/AutoDotAI/RunGuard/issues).
 This checkout contains a FastAPI backend with SQLite-backed local accounts,
 durable workers, runs, and logs, a separate Python worker process, and a source
 snapshot of the existing Lovable frontend in `frontend/`. The frontend uses
@@ -50,6 +61,7 @@ Launch the local API from `backend/`:
 
 ```bash
 export RUNGUARD_AUTH_SECRET="$(openssl rand -hex 32)"
+uv run alembic upgrade head
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
@@ -145,6 +157,13 @@ recreate the worker with `docker compose up -d --force-recreate worker`. The
 worker alone receives those settings; they are never
 built into the frontend image. Without a model, a summarizer run returns its
 existing `LLM_ERROR` provider-unavailable result.
+A ChatGPT or agent subscription is not a backend API credential. The local
+alert responder runs offline and needs no model key.
+The owner has requested a future **host-side Codex CLI** default with Claude
+CLI selectable; see [#35](https://github.com/AutoDotAI/RunGuard/issues/35)
+and [#36](https://github.com/AutoDotAI/RunGuard/issues/36). Those providers
+are not implemented in this commit. CLI login material must remain on the
+host and must not be copied into the Compose containers.
 
 ## Continuous integration
 
@@ -179,9 +198,13 @@ docker compose config --quiet
 rm -f .env
 ```
 
-CI does not start the containers, call live target websites or model providers,
-publish images, or deploy. Its tests inject outbound HTTP and model fakes;
-the local Compose smoke above is the separate runtime check.
+CI does not start the app containers or call live target websites or model
+providers. On a passing `main` push it publishes API, web, and egress-guard
+images to GHCR, records immutable digests in a same-run artifact, and runs
+host-free CD validation. The development host job is skipped because no host
+or domain is configured; publishing an image is not a deployment. Pull
+requests test and build but cannot publish or deploy. The local Compose smoke
+above is the separate runtime check.
 
 ## Local deployment preparation and deferred public hosting
 
