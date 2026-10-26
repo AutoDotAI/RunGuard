@@ -42,7 +42,8 @@ def main() -> None:
         private_env.write_text("RUNGUARD_MODEL_PROVIDER=disabled\n")
         private_env.chmod(0o600)
         env = os.environ.copy()
-        env.update(RUNGUARD_POSTGRES_PASSWORD=password, RUNGUARD_AUTH_SECRET=secret,
+        env.update(RUNGUARD_POSTGRES_DB="runguard", RUNGUARD_POSTGRES_USER="runguard",
+                   RUNGUARD_POSTGRES_PASSWORD=password, RUNGUARD_AUTH_SECRET=secret,
                    RUNGUARD_POSTGRES_PORT=str(free_port()),
                    RUNGUARD_MODEL_ENV_FILE=str(private_env))
         # Compose env_file is a host file read at container creation, not a mount.
