@@ -111,6 +111,42 @@ class AlertRecord(Base):
     )
 
 
+class IncidentRecord(Base):
+    __tablename__ = "responder_incidents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    alert_id: Mapped[str] = mapped_column(String(36), ForeignKey("alerts.id"), unique=True, nullable=False)
+    owner_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id"), nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    evidence_json: Mapped[str] = mapped_column(Text, nullable=False)
+    symptom: Mapped[str] = mapped_column(String(256), nullable=False)
+    likely_cause: Mapped[str] = mapped_column(String(80), nullable=False)
+    recommendation: Mapped[str] = mapped_column(String(256), nullable=False)
+    decision_source: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(35), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(35), nullable=False)
+
+
+class ResponderActionRecord(Base):
+    __tablename__ = "responder_actions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    incident_id: Mapped[str] = mapped_column(String(36), ForeignKey("responder_incidents.id"), unique=True, nullable=False)
+    alert_id: Mapped[str] = mapped_column(String(36), ForeignKey("alerts.id"), nullable=False)
+    actor: Mapped[str] = mapped_column(String(32), nullable=False)
+    policy: Mapped[str] = mapped_column(String(64), nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    decision: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str] = mapped_column(String(80), nullable=False)
+    before_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    after_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    result: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(35), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(35), nullable=False)
+
+
 def default_database_url() -> str:
     path = Path(__file__).resolve().parents[1] / "data" / "runguard.db"
     return f"sqlite:///{path}"

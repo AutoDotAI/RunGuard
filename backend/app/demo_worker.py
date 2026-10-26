@@ -50,6 +50,10 @@ class DemoControl:
         except FileNotFoundError:
             return None
 
+    def status(self) -> dict | None:
+        """Read the isolated control state for the local operator CLI."""
+        return self.state()
+
     def _save(self, state: dict | None) -> None:
         if state is None:
             self.state_path.unlink(missing_ok=True)
@@ -117,12 +121,14 @@ class DemoControl:
             return current
         return self._locked(operation)
 
-    def resume(self) -> dict:
+    def resume(self, *, require_paused: bool = False) -> dict:
         def operation():
             current = self.state()
             if current is None or current["run_id"] is None:
                 raise DemoDenied("Bind one fixture run before resuming")
             if current["status"] == "resumed":
+                if require_paused:
+                    raise DemoDenied("Demo worker was already resumed")
                 return current
             with self.users.sessions() as session:
                 session.execute(text("BEGIN IMMEDIATE"))

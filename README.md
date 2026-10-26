@@ -193,3 +193,12 @@ deployment remains deferred to [#34](https://github.com/AutoDotAI/RunGuard/issue
 until a host, domain, access method, and external HTTPS/egress QA are available.
 A model provider key is optional and server-side; an agent or ChatGPT
 subscription is not a backend API credential.
+
+## Local alert and responder drill
+
+The local observability profile records user-journey metrics, logs, traces,
+and owned alerts. The bounded responder reads a real persisted alert,
+diagnoses it offline through four fixed inspections, and may resume only the
+single paused worker in an isolated demo project. It audits its decision and
+checks recovery; it never retries a failed user job. See the exact Compose
+commands and offline smoke in [docs/observability.md](docs/observability.md).

@@ -77,7 +77,43 @@ resume. `cleanup` is idempotent. A normal or public Compose service has no
 demo mode and rejects these commands; even in demo mode, any unrelated active
 job blocks pause, bind, or resume. The demo dashboard explicitly says
 **Local demo · injected worker pause**. This is not a production worker
-control or a responder agent.
+control. The bounded responder below uses this same gate.
+
+### Bounded local responder
+
+The responder is a separate backend command. It scans only persisted open
+alerts and creates one SQLite incident per alert. Its four fixed inspections
+read worker heartbeat, the owned failed run, recent safe event codes, and the
+owned queue depth. A deterministic policy diagnoses target failures separately
+from worker/platform failures. It uses no model key, untrusted page text,
+arbitrary tool, shell command, or automatic run retry.
+
+Only a `worker_queue_stalled` alert for the one bound, paused fixture in an
+explicit `rg-demo-*` project may invoke `resume_demo_worker`. The responder
+reserves an audited action before invoking the existing demo gate, then checks
+the run and alert for recovery. Outside the demo it records
+`approval_required`; a mismatch or unrelated queued job records denial. A
+timeout records `needs_review`, never a false recovery. Incident and action
+records survive restart and prevent duplicate remediation.
+
+Use a fresh isolated Compose project with `.env` configured. From the repo
+root, run:
+
+```bash
+export RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT=rg-demo-responder-1
+export COMPOSE_PROJECT_NAME="$RUNGUARD_DEMO_PROJECT"
+docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml -f compose.responder.yaml --profile observability --profile responder up --build -d
+python3 scripts/responder_smoke.py
+docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml -f compose.responder.yaml --profile observability --profile responder down
+```
+
+The smoke creates its own account and fixture, waits for the real stalled
+alert and local firing notification, launches `app.responder once`, verifies
+the incident evidence and one audited resume, and checks terminal success plus
+the resolved alert and operator notification. Cleanup releases its own demo
+control state. `down` retains the isolated SQLite volume; delete it only after
+reviewing its project name and data. This local action is not a public
+approval or remediation endpoint.
 
 The API exports `runguard_alerts_open{kind}` with only two fixed kind values.
 It sends one aggregate firing or resolved state per kind to the local
