@@ -149,6 +149,7 @@ def test_provider_failure_is_sanitized_without_retry(provider_result):
 def test_queue_to_persisted_result_and_logs(tmp_path, monkeypatch):
     database_url = f"sqlite:///{tmp_path / 'summary.db'}"
     llm = FakeLLM()
+    monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "litellm")
     monkeypatch.setenv("LLM_MODEL", "test/model")
     monkeypatch.setattr(outbound, "fetch", lambda _url: page())
     monkeypatch.setattr(LiteLLMClient, "complete", lambda _self, **kwargs: llm.complete(**kwargs))

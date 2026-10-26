@@ -38,6 +38,11 @@ services:
   worker:
     <<: *backend
     env_file: .env
+    environment:
+      RUNGUARD_DATABASE_URL: sqlite:////data/runguard.db
+      RUNGUARD_AUTH_SECRET: ${RUNGUARD_AUTH_SECRET:?Set a stable secret of at least 32 bytes in .env}
+      # Host subscription credentials are never mounted into this container.
+      RUNGUARD_MODEL_PROVIDER: ${RUNGUARD_MODEL_PROVIDER:-disabled}
     command: ["python", "-m", "app.workers.runner"]
     depends_on:
       migrate:
