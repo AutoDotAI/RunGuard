@@ -196,6 +196,9 @@ subscription is not a backend API credential.
 
 ## Local alert and responder drill
 
+For an optional read-only analysis of one persisted incident using the host's
+Codex or Claude CLI login, see [host CLI incident investigation](docs/incident-ai.md).
+
 The local observability profile records user-journey metrics, logs, traces,
 and owned alerts. The bounded responder reads a real persisted alert,
 diagnoses it offline through four fixed inspections, and may resume only the
