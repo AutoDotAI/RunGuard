@@ -81,8 +81,11 @@
   before import, keep the original Docker volume untouched, import into an
   empty migrated PostgreSQL database in foreign-key order, preserve IDs and
   timestamps, reset sequences, and verify row counts, ownership, login, and
-  run history. Refuse a nonempty target or schema mismatch; document a
-  recovery path. Stopping the old site does not authorize deleting its data.
+  run history. `run_logs.id` remains a signed-64 cursor backed by PostgreSQL
+  `BIGINT`/`BIGSERIAL`; reset its sequence after copied IDs. Preserve the
+  `runs.retry_of_run_id` self-reference with an ordered or two-pass import.
+  Refuse a nonempty target or schema mismatch; document a recovery path.
+  Stopping the old site does not authorize deleting its data.
 - Update local Compose, CI, CD validation, backup, and rollback rehearsal to
   use PostgreSQL. Back up PostgreSQL consistently with `pg_dump`/`pg_restore`
   or an equivalent verified mechanism, and fail closed when an older image
@@ -90,6 +93,9 @@
   against an isolated PostgreSQL instance, including restart persistence,
   concurrent enqueue/claim, and two-user isolation. SQLite may remain only
   as the read-only source for the one-time importer and isolated legacy tests.
+  A pre-cutover rollback can restore the retained SQLite backup and old app
+  only with an explicit warning that PostgreSQL writes made after cutover
+  would be lost; subsequent release rollbacks remain PostgreSQL-to-PostgreSQL.
 
 ### Current acceptance target for AI configuration and workers
 
