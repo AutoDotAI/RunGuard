@@ -165,8 +165,9 @@ def test_unconfigured_summarizer_fails_visibly_without_fabricated_result(tmp_pat
         final = run(client, token, summarizer)
         assert final["status"] == "failed"
         assert final["result"] is None
-        assert final["error"]["code"] == "LLM_ERROR"
-        assert "LLM_ERROR" in [item["event"] for item in logs(client, token, summarizer)["items"]]
+        assert final["error"]["code"] == "MODEL_PROVIDER_UNAVAILABLE"
+        assert "host Codex or Claude" in final["error"]["message"]
+        assert "MODEL_PROVIDER_UNAVAILABLE" in [item["event"] for item in logs(client, token, summarizer)["items"]]
 
 
 def test_cli_process_consumes_durable_queue_after_api_restart(tmp_path):

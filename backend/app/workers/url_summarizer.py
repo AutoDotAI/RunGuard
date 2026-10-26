@@ -155,9 +155,10 @@ def summarize(snapshot: RunSnapshot, *,
     emit("TEXT_EXTRACTED", "Readable page text extracted", "INFO")
     selected = _provider(llm, model)
     if selected is None:
-        emit("LLM_REQUEST_FAILED", "Summarization provider unavailable", "ERROR")
+        emit("MODEL_PROVIDER_UNAVAILABLE", "No summarization provider is configured", "ERROR")
         return HandlerOutcome(None, http_status=response.status,
-                              error_code="LLM_ERROR", error_message="Summarization provider unavailable")
+                              error_code="MODEL_PROVIDER_UNAVAILABLE",
+                              error_message="No model provider is configured. Use a host Codex or Claude worker, or configure LiteLLM on the server.")
     client, selected_model = selected
     emit("LLM_REQUEST_STARTED", f"Requesting summary with {PROMPT_VERSION}", "INFO")
     try:
