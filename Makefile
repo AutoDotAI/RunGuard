@@ -8,13 +8,16 @@ DOCKER ?= docker
 OBS_PROJECT ?= rg-observe-demo
 DEMO_PROJECT ?=
 DEMO_MODE ?=
-export OBS_PROJECT DEMO_PROJECT DEMO_MODE
+INCIDENT_ID ?=
+OWNER_USER_ID ?=
+INCIDENT_PROVIDER ?= codex
+export OBS_PROJECT DEMO_PROJECT DEMO_MODE INCIDENT_ID OWNER_USER_ID INCIDENT_PROVIDER
 
 OBS_COMPOSE = $(DOCKER) compose -p "$$OBS_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability
 STALL_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml --profile observability
 RESPONDER_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml -f compose.responder.yaml --profile observability --profile responder
 
-.PHONY: help install install-backend install-frontend test test-backend test-frontend typecheck build build-frontend build-images check migrate api worker frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down cd-check rollback-rehearsal
+.PHONY: help install install-backend install-frontend test test-backend test-frontend typecheck build build-frontend build-images check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry cd-check rollback-rehearsal
 
 help: ## List every Makefile target; no install or service start
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-24s %s\n", $$1, $$2}' Makefile
@@ -45,8 +48,15 @@ migrate: ## Apply Alembic migrations to the selected local SQLite database
 api: ## Start loopback API in this terminal; export a stable RUNGUARD_AUTH_SECRET first
 	@test -n "$$RUNGUARD_AUTH_SECRET" || { echo 'Set stable RUNGUARD_AUTH_SECRET (at least 32 bytes) first' >&2; exit 2; }
 	cd backend && $(UV) run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
-worker: ## Start one backend worker in this terminal; use the API database URL
+worker: ## Start one host worker; Codex CLI is default (same API database URL)
 	cd backend && $(UV) run python -m app.workers.runner
+worker-codex: ## Start one host worker using signed-in Codex CLI (local subscription)
+	cd backend && RUNGUARD_MODEL_PROVIDER=codex $(UV) run python -m app.workers.runner
+worker-claude: ## Start one host worker using signed-in Claude CLI
+	cd backend && RUNGUARD_MODEL_PROVIDER=claude $(UV) run python -m app.workers.runner
+worker-litellm: ## Start one host worker with server-side LLM_MODEL and provider key
+	@test -n "$$LLM_MODEL" || { echo 'Set LLM_MODEL and its server-side provider credential first' >&2; exit 2; }
+	cd backend && RUNGUARD_MODEL_PROVIDER=litellm $(UV) run python -m app.workers.runner
 frontend: ## Start local Vite frontend in this terminal; configure frontend/.env.local
 	cd frontend && $(NPM) run dev
 
@@ -85,6 +95,16 @@ responder-smoke: guard-demo ## Run gated alert-to-responder-to-recovery drill
 	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(PYTHON) scripts/responder_smoke.py
 responder-down: guard-demo ## Stop responder drill stack without deleting its volume
 	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(RESPONDER_COMPOSE) down
+
+guard-incident: ## Require an existing open INCIDENT_ID and OWNER_USER_ID; provider codex/claude
+	@test -n "$$INCIDENT_ID" && test -n "$$OWNER_USER_ID" || { echo 'Set INCIDENT_ID and OWNER_USER_ID for an existing open incident' >&2; exit 2; }
+	@case "$$INCIDENT_PROVIDER" in codex|claude) ;; *) echo 'INCIDENT_PROVIDER must be codex or claude' >&2; exit 2;; esac
+incident-investigate: guard-incident ## Opt-in read-only host CLI analysis; existing login required
+	@cd backend && $(UV) run python -m app.incident_ai investigate "$$INCIDENT_ID" --owner-id "$$OWNER_USER_ID" --provider "$$INCIDENT_PROVIDER"
+incident-review: guard-incident ## Review saved advisory for an owned incident; no CLI call
+	@cd backend && $(UV) run python -m app.incident_ai review "$$INCIDENT_ID" --owner-id "$$OWNER_USER_ID"
+incident-retry: guard-incident ## Explicit new advisory attempt; existing host CLI login required
+	@cd backend && $(UV) run python -m app.incident_ai retry "$$INCIDENT_ID" --owner-id "$$OWNER_USER_ID" --provider "$$INCIDENT_PROVIDER"
 
 cd-check: ## Validate local CD workflows and fail-closed paths; no deployment
 	sh deploy/test_cd.sh
