@@ -57,7 +57,14 @@ below, then run `make compose-config`, `make compose-up`, and
 and may contact `example.com`; `make compose-logs` shows bounded logs, and
 `make compose-down` stops services **without deleting the SQLite volume**.
 The optional local telemetry profile uses `make observability-up`,
-`make observability-smoke`, and `make observability-down`.
+`make observability-smoke`, and `make observability-down`. It attaches to the
+same local Compose project by default: Grafana is at <http://localhost:3001>,
+with Prometheus, Loki, and Tempo in Grafana Explore. Alertmanager is at
+<http://localhost:9093>, and the operator inbox at <http://localhost:9094>.
+The raw telemetry service ports are not separately published. See
+[docs/observability.md](docs/observability.md) before running the smoke, which
+briefly stops a worker and belongs in an isolated project. Enabling telemetry
+may briefly recreate API/worker; wait for API health before using the site.
 
 The alert and responder drills need a new isolated project and an explicit
 demo gate. For example, `make demo-stall-up DEMO_MODE=true

@@ -134,7 +134,7 @@ class RollbackTests(unittest.TestCase):
                 host = self.root / failing_step
                 deploy_dir = host / "deploy"
                 deploy_dir.mkdir(parents=True)
-                for filename in ("remote_rollback.sh", "state.py", "release.py"):
+                for filename in ("remote_rollback.sh", "state.py", "release.py", "compose_overrides.py"):
                     shutil.copy2(ROOT / filename, deploy_dir / filename)
                 (deploy_dir / "smoke.py").write_text("raise SystemExit(1)\n")
                 (host / ".env.development").write_text(

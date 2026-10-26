@@ -43,7 +43,7 @@ def run():
         alert = eventually("real stalled alert", open_alert, timeout=90)
         eventually("firing operator notification", lambda: "<td>worker_queue_stalled</td>" in request(INBOX)[1]
                    and "<td>firing</td>" in request(INBOX)[1], timeout=60)
-        command = [*COMPOSE, "-f", "compose.responder.yaml", "--profile", "responder",
+        command = [*COMPOSE, "--profile", "responder",
                    "run", "--rm", "--no-deps", "responder", "python", "-m", "app.responder", "once"]
         process = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=75)
         assert process.returncode == 0, "Responder command failed"
