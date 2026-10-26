@@ -24,10 +24,10 @@ function EditWorker() {
   const q = useQuery({ queryKey: ["worker", id], queryFn: () => api.getWorker(id) });
   return (
     <>
-      <PageHeader title="Edit worker" sub={q.data?.name} />
+      <PageHeader title="Edit worker" sub={q.error ? undefined : q.data?.name} />
       {q.error && <ErrorState error={q.error} />}
       {q.isPending && <p role="status" className="text-sm text-muted-foreground">Loading worker…</p>}
-      {q.data && (
+      {q.data && !q.error && (
         <>
         <p className="mb-4 text-sm text-muted-foreground">Changes affect future runs only. Past runs keep their saved configuration.</p>
         <WorkerForm

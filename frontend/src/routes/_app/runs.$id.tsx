@@ -62,7 +62,7 @@ export function RunDetailView({ id }: { id: string }) {
     retry: 2,
     retryDelay: (n) => Math.min(2000 * 2 ** n, 15000),
   });
-  const r = q.data;
+  const r = q.error ? undefined : q.data;
   const active = !r || isActive(r.status);
   const { logs, error: logsError } = useRunLogs(id, active);
   // one final logs fetch once terminal
@@ -80,7 +80,7 @@ export function RunDetailView({ id }: { id: string }) {
     onError: (e) => toast.error(e.message),
   });
 
-  if (q.error && !r) return <ErrorState error={q.error} />;
+  if (q.error) return <ErrorState error={q.error} />;
   if (!r) return <p role="status" className="text-sm text-muted-foreground">Loading run details…</p>;
 
   return (
@@ -95,7 +95,6 @@ export function RunDetailView({ id }: { id: string }) {
           </>
         }
       />
-      {q.error && <div className="mb-4"><ErrorState error={q.error} /></div>}
       {retry.error && <div className="mb-4"><ErrorState error={retry.error} /></div>}
       <div className="grid gap-6 lg:grid-cols-[1fr_1.4fr]">
         <div className="space-y-6">

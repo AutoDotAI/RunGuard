@@ -76,7 +76,7 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-describe("P0 screens with the typed mock adapter", () => {
+describe("P0 screens with the typed API adapter", () => {
   it("shows a useful empty dashboard and a failed-run count from adapter data", async () => {
     const empty: DashboardSummary = {
       window: "24h",
@@ -107,6 +107,21 @@ describe("P0 screens with the typed mock adapter", () => {
       "href",
       "/runs/run-1",
     );
+  });
+
+  it("hides previously loaded dashboard data when a refresh is forbidden", async () => {
+    const data: DashboardSummary = {
+      window: "24h", total: 9, succeeded: 9, failed: 0,
+      success_rate: 1, avg_duration_ms: 50, recent_runs: [],
+    };
+    mocks.getDashboardSummary.mockResolvedValueOnce(data);
+    const view = mount(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByText("9")).toHaveLength(2));
+    mocks.getDashboardSummary.mockRejectedValue(new ApiError(403, "FORBIDDEN", "Access denied"));
+    await view.client.invalidateQueries({ queryKey: ["dashboard"] });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Access denied");
+    expect(screen.queryAllByText("9")).toHaveLength(0);
+    view.unmount();
   });
 
   it("shows a worker-list empty action and a request failure distinctly", async () => {

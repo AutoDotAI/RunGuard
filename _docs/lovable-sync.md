@@ -45,5 +45,5 @@ rebase, amend, or squash published Lovable commits.
 Run the frontend from `frontend/` with `npm install --no-package-lock`,
 `npm run build`, `npm test`, and `npm run dev`. Run the API from `backend/`
 with `uv sync --extra test`, `uv run pytest -q`, and
-`uv run uvicorn app.main:app --host 127.0.0.1 --port 8000`. The current API
-uses in-memory demo data; the frontend still uses mock data.
+`uv run uvicorn app.main:app --host 127.0.0.1 --port 8000`. The API stores
+accounts, workers, runs, and logs in SQLite; the frontend uses its HTTP API.

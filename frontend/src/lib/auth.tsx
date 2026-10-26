@@ -80,15 +80,18 @@ function storeSession(session: Session) {
   emit();
 }
 
+export function apiBaseUrl(): string {
+  return import.meta.env["VITE_API_BASE_URL"]?.trim().replace(/\/+$/, "") ?? "";
+}
+
 type AuthErrorBody = { error?: { code?: string; message?: string } };
 
 async function requestSession(path: "/register" | "/login", email: string, password: string): Promise<Session> {
   clearLegacyMockAuth();
   clearSession();
-  const configuredOrigin = import.meta.env["VITE_API_BASE_URL"]?.trim().replace(/\/$/, "") ?? "";
   let response: Response;
   try {
-    response = await fetch(`${configuredOrigin}/api/v1/auth${path}`, {
+    response = await fetch(`${apiBaseUrl()}/api/v1/auth${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),

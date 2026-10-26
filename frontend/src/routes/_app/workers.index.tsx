@@ -58,19 +58,20 @@ export function Workers() {
     refetchInterval: (query) => (query.state.data?.items.some((w) => w.last_run && isActive(w.last_run.status)) ? 2500 : false),
   });
   const run = useRunWorker();
+  const data = q.error ? undefined : q.data;
   return (
     <>
-      <PageHeader title="Workers" sub={q.data ? `${q.data.total} of 20 saved` : undefined} actions={<Button asChild><Link to="/workers/new"><Plus /> New worker</Link></Button>} />
+      <PageHeader title="Workers" sub={data ? `${data.total} of 20 saved` : undefined} actions={<Button asChild><Link to="/workers/new"><Plus /> New worker</Link></Button>} />
       {q.error && <ErrorState error={q.error} />}
       {q.isLoading && <div className="h-40 animate-pulse rounded-md bg-muted" />}
-      {q.data && q.data.items.length === 0 && (
+      {data && data.items.length === 0 && (
         <div className="rounded-md border border-dashed p-12 text-center">
           <p className="text-sm text-muted-foreground">No workers yet.</p>
           <Button asChild className="mt-4"><Link to="/workers/new"><Plus /> Create your first worker</Link></Button>
         </div>
       )}
       <div className="grid gap-3">
-        {q.data?.items.map((w) => (
+        {data?.items.map((w) => (
           <div key={w.id} className="flex flex-wrap items-center gap-4 rounded-md border bg-card p-4">
             <div className="min-w-0 flex-1">
               <Link to="/workers/$id" params={{ id: w.id }} className="font-medium hover:underline">{w.name}</Link>

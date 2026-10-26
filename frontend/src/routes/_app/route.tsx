@@ -1,4 +1,6 @@
-import { createFileRoute, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, redirect, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Activity, LayoutDashboard, LogOut, Plus, Boxes } from "lucide-react";
 import { auth, useSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -18,7 +20,16 @@ const nav = [
 
 function AppShell() {
   const session = useSession();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const path = useRouterState({ select: (s) => s.location.pathname });
+  useEffect(() => {
+    if (!session && !auth.getSession()) {
+      queryClient.clear();
+      navigate({ to: "/login", replace: true });
+    }
+  }, [session, navigate, queryClient]);
+  if (!session) return null;
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <aside className="flex shrink-0 flex-row items-center gap-1 border-sidebar-border bg-sidebar px-3 py-2 text-sidebar-foreground md:w-56 md:flex-col md:items-stretch md:border-r md:px-3 md:py-5">

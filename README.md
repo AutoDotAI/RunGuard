@@ -2,10 +2,9 @@
 
 RunGuard is being built in [public issues](https://github.com/AutoDotAI/RunGuard/issues).
 This checkout contains a FastAPI backend with SQLite-backed local accounts,
-process-local worker/run data, and a source snapshot of the existing
-Lovable frontend in `frontend/`. The frontend uses the backend's local
-registration and login endpoints; worker/run persistence, worker execution,
-and frontend application-data integration are follow-up issues. Lovable editor
+durable workers, runs, and logs, a separate Python worker process, and a source
+snapshot of the existing Lovable frontend in `frontend/`. The frontend uses
+the backend for authentication and application data. Lovable editor
 commits still go
 to `AutoDotAI/screenshot-guard-studio`; see
 [_docs/lovable-sync.md](_docs/lovable-sync.md) before importing later changes.
@@ -22,11 +21,12 @@ npm test
 npm run dev
 ```
 
-For local authentication against the backend on port 8000, copy
+For local use against the backend on port 8000, copy
 `frontend/.env.example` to `frontend/.env.local` before `npm run dev`.
 `VITE_API_BASE_URL` contains only the API origin, not a secret; omit it when
-the frontend and API share one origin. Worker and run data still use the
-mock client until Issue #17.
+the frontend and API share one origin. The default app uses real HTTP data;
+new accounts start with no workers, runs, or logs. Keep the API and worker
+running together to process queued jobs.
 
 ## Backend baseline
 
@@ -46,6 +46,13 @@ Launch the local API from `backend/`:
 ```bash
 export RUNGUARD_AUTH_SECRET="$(openssl rand -hex 32)"
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+In another terminal, start the queue worker from `backend/` with the same
+`RUNGUARD_DATABASE_URL` as the API:
+
+```bash
+uv run python -m app.workers.runner
 ```
 
 Keep this secret stable across restarts. Accounts live in `backend/data/runguard.db`

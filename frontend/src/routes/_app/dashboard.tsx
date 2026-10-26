@@ -34,7 +34,7 @@ export function Dashboard() {
     queryFn: () => api.getDashboardSummary(),
     refetchInterval: (query) => (query.state.data?.recent_runs.some((r) => isActive(r.status)) ? 2500 : false),
   });
-  const d = q.data;
+  const d = q.error ? undefined : q.data;
   return (
     <>
       <PageHeader
@@ -49,7 +49,7 @@ export function Dashboard() {
       />
       {q.error && <ErrorState error={q.error} />}
       {(q.isPending && !q.error) && <p role="status" className="mb-4 text-sm text-muted-foreground">Loading dashboard…</p>}
-      {(d || !q.error) && <>
+      {!q.error && <>
       {d && d.failed > 0 && (
         <div role="status" className="mb-6 flex items-center gap-2 rounded-md border border-destructive/30 bg-danger-soft px-4 py-3 text-sm text-destructive">
           <AlertTriangle className="size-4" /> {d.failed} failed run{d.failed > 1 ? "s" : ""} in the last 24 hours. Open a failed run to inspect logs and retry.

@@ -42,10 +42,10 @@ export function WorkerDetailView({ id }: { id: string }) {
     refetchInterval: (q) => (q.state.data?.items.some((r) => isActive(r.status)) ? 2500 : false),
   });
   const run = useRunWorker();
-  const visibleLatest = runs.data?.items.find((r) => r.id === w.data?.last_run?.id);
+  const visibleLatest = runs.error ? undefined : runs.data?.items.find((r) => r.id === w.data?.last_run?.id);
   const active = (visibleLatest ? isActive(visibleLatest.status) : !!w.data?.last_run && isActive(w.data.last_run.status)) ||
-    (runs.data?.items.some((r) => isActive(r.status)) ?? false);
-  const pages = runs.data ? Math.max(1, Math.ceil(runs.data.total / PAGE)) : 1;
+    (!runs.error && (runs.data?.items.some((r) => isActive(r.status)) ?? false));
+  const pages = runs.data && !runs.error ? Math.max(1, Math.ceil(runs.data.total / PAGE)) : 1;
 
   if (w.error) return <ErrorState error={w.error} />;
   const d = w.data;
@@ -75,8 +75,8 @@ export function WorkerDetailView({ id }: { id: string }) {
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Execution history</h2>
       {runs.isPending && <p role="status" className="text-sm text-muted-foreground">Loading execution history…</p>}
       {runs.error && <ErrorState error={runs.error} />}
-      {runs.data && <RunsTable runs={runs.data.items} showWorker={false} empty="This worker hasn't run yet. Run it now to see its history." />}
-      {pages > 1 && (
+      {runs.data && !runs.error && <RunsTable runs={runs.data.items} showWorker={false} empty="This worker hasn't run yet. Run it now to see its history." />}
+      {!runs.error && pages > 1 && (
         <div className="mt-3 flex items-center justify-end gap-2 text-sm">
           <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>
           <span className="font-mono text-xs text-muted-foreground">{page} / {pages}</span>
