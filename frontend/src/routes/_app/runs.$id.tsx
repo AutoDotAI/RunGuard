@@ -40,7 +40,8 @@ function useRunLogs(id: string, active: boolean) {
       }
       return res.next_after_id;
     },
-    refetchInterval: active ? 2000 : false,
+    refetchInterval: (query) => active ? Math.min(2500 * 2 ** query.state.fetchFailureCount, 15000) : false,
+    retry: 2,
     retryDelay: (n) => Math.min(2000 * 2 ** n, 15000),
   });
   return { logs, error: q.error };
@@ -48,17 +49,22 @@ function useRunLogs(id: string, active: boolean) {
 
 function RunDetail() {
   const { id } = Route.useParams();
+  return <RunDetailView id={id} />;
+}
+
+export function RunDetailView({ id }: { id: string }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const q = useQuery({
     queryKey: ["run", id],
     queryFn: () => api.getRun(id),
-    refetchInterval: (query) => (query.state.data && !isActive(query.state.data.status) ? false : 2500),
+    refetchInterval: (query) => (query.state.data && !isActive(query.state.data.status) ? false : Math.min(2500 * 2 ** query.state.fetchFailureCount, 15000)),
+    retry: 2,
     retryDelay: (n) => Math.min(2000 * 2 ** n, 15000),
   });
   const r = q.data;
   const active = !r || isActive(r.status);
-  const { logs } = useRunLogs(id, active);
+  const { logs, error: logsError } = useRunLogs(id, active);
   // one final logs fetch once terminal
   useEffect(() => {
     if (r && !isActive(r.status)) qc.invalidateQueries({ queryKey: ["logs", id] });
@@ -74,8 +80,8 @@ function RunDetail() {
     onError: (e) => toast.error(e.message),
   });
 
-  if (q.error) return <ErrorState error={q.error} />;
-  if (!r) return <div className="h-64 animate-pulse rounded-md bg-muted" />;
+  if (q.error && !r) return <ErrorState error={q.error} />;
+  if (!r) return <p role="status" className="text-sm text-muted-foreground">Loading run details…</p>;
 
   return (
     <>
@@ -85,10 +91,12 @@ function RunDetail() {
         actions={
           <>
             <StatusBadge status={r.status} />
-            {r.status === "failed" && <Button onClick={() => retry.mutate()} disabled={retry.isPending}><RotateCcw /> Retry</Button>}
+            {r.status === "failed" && <Button onClick={() => retry.mutate()} disabled={retry.isPending}><RotateCcw /> {retry.isPending ? "Retrying…" : "Retry"}</Button>}
           </>
         }
       />
+      {q.error && <div className="mb-4"><ErrorState error={q.error} /></div>}
+      {retry.error && <div className="mb-4"><ErrorState error={retry.error} /></div>}
       <div className="grid gap-6 lg:grid-cols-[1fr_1.4fr]">
         <div className="space-y-6">
           <Meta r={r} />
@@ -106,11 +114,12 @@ function RunDetail() {
             <span className="font-mono uppercase tracking-wide">Step logs</span>
             {active && <span className="flex items-center gap-1.5 font-mono text-info"><span className="pulse-dot size-1.5 rounded-full bg-current" />polling</span>}
           </div>
+          {logsError && <div className="m-3"><ErrorState error={logsError} /></div>}
           <ol className="max-h-[32rem] overflow-auto p-3 font-mono text-xs leading-relaxed">
-            {logs.length === 0 && <li className="text-terminal-foreground/50">Waiting for logs…</li>}
+            {logs.length === 0 && !logsError && <li className="text-terminal-foreground/50">Waiting for logs…</li>}
             {logs.map((l) => (
               <li key={l.id} className="grid grid-cols-[auto_auto_1fr] gap-x-3 py-0.5">
-                <span className="text-terminal-foreground/50">{new Date(l.timestamp).toISOString().slice(11, 23)}</span>
+                <span className="text-terminal-foreground/50">{l.timestamp}</span>
                 <span className={cn("w-10", levelTone[l.level])}>{l.level}</span>
                 <span><span className="text-signal">{l.event}</span> {l.message}</span>
               </li>
@@ -124,7 +133,7 @@ function RunDetail() {
 
 function Meta({ r }: { r: Run }) {
   const rows: [string, React.ReactNode][] = [
-    ["Worker", <Link to="/workers/$id" params={{ id: r.worker_id }} className="underline-offset-4 hover:underline">{r.worker_name}</Link>],
+    ["Worker", <span>{r.worker_name}</span>],
     ["URL used", <span className="break-all">{r.url}</span>],
     ["Created", fmtTime(r.created_at)],
     ["Started", fmtTime(r.started_at)],

@@ -28,7 +28,7 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
   );
 }
 
-function Dashboard() {
+export function Dashboard() {
   const q = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => api.getDashboardSummary(),
@@ -48,6 +48,8 @@ function Dashboard() {
         }
       />
       {q.error && <ErrorState error={q.error} />}
+      {(q.isPending && !q.error) && <p role="status" className="mb-4 text-sm text-muted-foreground">Loading dashboard…</p>}
+      {(d || !q.error) && <>
       {d && d.failed > 0 && (
         <div role="status" className="mb-6 flex items-center gap-2 rounded-md border border-destructive/30 bg-danger-soft px-4 py-3 text-sm text-destructive">
           <AlertTriangle className="size-4" /> {d.failed} failed run{d.failed > 1 ? "s" : ""} in the last 24 hours. Open a failed run to inspect logs and retry.
@@ -61,7 +63,8 @@ function Dashboard() {
         <Stat label="Avg duration" value={d ? (d.avg_duration_ms == null ? "N/A" : fmtDuration(d.avg_duration_ms)) : "…"} hint="Completed runs, 24h" />
       </div>
       <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Recent executions</h2>
-      {d ? <RunsTable runs={d.recent_runs} empty="No runs yet. Create a worker and press Run." /> : !q.error && <div className="h-32 animate-pulse rounded-md bg-muted" />}
+      {d ? <RunsTable runs={d.recent_runs} empty="No runs yet. Create a worker and press Run." /> : <div className="h-32 animate-pulse rounded-md bg-muted" />}
+      </>}
     </>
   );
 }

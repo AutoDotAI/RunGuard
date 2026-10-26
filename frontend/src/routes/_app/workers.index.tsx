@@ -35,7 +35,7 @@ export function ArchiveButton({ worker, onDone }: { worker: Worker; onDone?: () 
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="text-destructive">Delete</Button>
+        <Button variant="ghost" size="sm" className="text-destructive" disabled={m.isPending}>Archive</Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -51,7 +51,7 @@ export function ArchiveButton({ worker, onDone }: { worker: Worker; onDone?: () 
   );
 }
 
-function Workers() {
+export function Workers() {
   const q = useQuery({
     queryKey: ["workers"],
     queryFn: () => api.listWorkers(),

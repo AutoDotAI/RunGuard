@@ -25,6 +25,10 @@ const PAGE = 10;
 
 function WorkerDetail() {
   const { id } = Route.useParams();
+  return <WorkerDetailView id={id} />;
+}
+
+export function WorkerDetailView({ id }: { id: string }) {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const w = useQuery({ queryKey: ["worker", id], queryFn: () => api.getWorker(id) });
@@ -34,7 +38,8 @@ function WorkerDetail() {
     refetchInterval: (q) => (q.state.data?.items.some((r) => isActive(r.status)) ? 2500 : false),
   });
   const run = useRunWorker();
-  const active = runs.data?.items.some((r) => isActive(r.status)) ?? false;
+  const active = (w.data?.last_run && isActive(w.data.last_run.status)) ||
+    (runs.data?.items.some((r) => isActive(r.status)) ?? false);
   const pages = runs.data ? Math.max(1, Math.ceil(runs.data.total / PAGE)) : 1;
 
   if (w.error) return <ErrorState error={w.error} />;
@@ -63,7 +68,9 @@ function WorkerDetail() {
         </dl>
       )}
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Execution history</h2>
-      {runs.data && <RunsTable runs={runs.data.items} showWorker={false} empty="This worker hasn't run yet." />}
+      {runs.isPending && <p role="status" className="text-sm text-muted-foreground">Loading execution history…</p>}
+      {runs.error && <ErrorState error={runs.error} />}
+      {runs.data && <RunsTable runs={runs.data.items} showWorker={false} empty="This worker hasn't run yet. Run it now to see its history." />}
       {pages > 1 && (
         <div className="mt-3 flex items-center justify-end gap-2 text-sm">
           <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>

@@ -26,7 +26,10 @@ function EditWorker() {
     <>
       <PageHeader title="Edit worker" sub={q.data?.name} />
       {q.error && <ErrorState error={q.error} />}
+      {q.isPending && <p role="status" className="text-sm text-muted-foreground">Loading worker…</p>}
       {q.data && (
+        <>
+        <p className="mb-4 text-sm text-muted-foreground">Changes affect future runs only. Past runs keep their saved configuration.</p>
         <WorkerForm
           editing
           initial={{ name: q.data.name, kind: q.data.kind, url: q.data.url }}
@@ -38,6 +41,7 @@ function EditWorker() {
             navigate({ to: "/workers/$id", params: { id } });
           }}
         />
+        </>
       )}
     </>
   );
