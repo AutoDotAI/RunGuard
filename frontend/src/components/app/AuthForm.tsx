@@ -1,15 +1,18 @@
 import { Link } from "@tanstack/react-router";
 import { Activity } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function AuthForm({ mode, onSubmit }: { mode: "login" | "signup"; onSubmit: (email: string, password: string) => Promise<void> }) {
+  const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => setReady(true), []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -27,6 +30,9 @@ export function AuthForm({ mode, onSubmit }: { mode: "login" | "signup"; onSubmi
   };
 
   const isLogin = mode === "login";
+  // Do not expose a submit button in SSR HTML before React can handle it.
+  // Otherwise a quick browser interaction can submit the empty native form.
+  if (!ready) return <p role="status" className="grid min-h-screen place-items-center text-sm text-muted-foreground">Loading account form…</p>;
   return (
     <div className="grid min-h-screen place-items-center bg-sidebar px-4">
       <div className="w-full max-w-sm">

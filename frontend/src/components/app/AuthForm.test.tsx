@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -9,6 +10,13 @@ vi.mock("@tanstack/react-router", () => ({
 import { AuthForm } from "./AuthForm";
 
 describe("auth form errors", () => {
+  it("does not render a native submit button before hydration", () => {
+    const html = renderToString(<AuthForm mode="signup" onSubmit={vi.fn()} />);
+    expect(html).toContain("Loading account form");
+    expect(html).not.toContain("<form");
+    expect(html).not.toContain('type="submit"');
+  });
+
   it("shows inline validation before calling the API", () => {
     const onSubmit = vi.fn();
     render(<AuthForm mode="signup" onSubmit={onSubmit} />);
