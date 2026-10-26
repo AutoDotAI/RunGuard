@@ -182,7 +182,7 @@ Description: At enqueue, copy task #45's setting into the run snapshot; manual r
 
 ## 48. Test worker failure boundaries and adapters
 Goal: Reproduce the user's PDF and provider failures and prove bounded worker behavior.
-Description: Add injected HTTP/CLI/LiteLLM tests showing an oversized or unsupported PDF fails before a model call, bounded HTML reaches the selected provider, and an unavailable provider fails with a distinct truthful error. Cover Codex, Claude, and LiteLLM timeouts, output size limits, malformed responses, subprocess cleanup, prompt-injection text, retry snapshots, and sanitized logs without paid API calls.
+Description: Add injected HTTP/CLI/LiteLLM tests showing an oversized or unsupported PDF fails before a model call, bounded HTML reaches the selected provider, and an unavailable provider fails with `MODEL_PROVIDER_UNAVAILABLE` before invocation. Cover Codex, Claude, and LiteLLM timeouts, output size limits, malformed responses, subprocess cleanup, prompt-injection text, retry snapshots, and sanitized logs without paid API calls; keep `LLM_ERROR` for attempted provider failures.
 
 ## 49. Run PostgreSQL end-to-end integration tests
 Goal: Prove the local frontend/API/worker/database journey against real PostgreSQL.
