@@ -76,7 +76,7 @@ def _provider(snapshot: RunSnapshot, llm: LLMClient | None,
         label = model if model is not None else snapshot.config.get("model", os.environ.get("LLM_MODEL", ""))
         return (llm or LiteLLMClient(), label) if label else None
     config = snapshot.config
-    if "provider_path" in config or "provider" in config or "model" in config:
+    if "provider_path" in config or "provider" in config:
         path, provider, label = (config.get(key) for key in ("provider_path", "provider", "model"))
         if not isinstance(label, str) or not label:
             return None
