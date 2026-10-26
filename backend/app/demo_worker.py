@@ -114,7 +114,8 @@ class DemoControl:
                     return current
                 raise DemoDenied("Finish or clean up the previous demo run first")
             with self.users.sessions() as session:
-                serialize(session, postgres=self.postgres, key=0x524744454D4F)
+                if not self.postgres:
+                    serialize(session, postgres=False, key=0x524744454D4F)
                 active = session.scalars(select(RunRecord).where(
                     RunRecord.status.in_(("queued", "running"))).limit(2)).all()
                 if active:
@@ -139,7 +140,8 @@ class DemoControl:
                     return current
                 raise DemoDenied("A different fixture run is already bound")
             with self.users.sessions() as session:
-                serialize(session, postgres=self.postgres, key=0x524744454D4F)
+                if not self.postgres:
+                    serialize(session, postgres=False, key=0x524744454D4F)
                 active = session.scalars(select(RunRecord).where(
                     RunRecord.status.in_(("queued", "running"))).limit(2)).all()
                 if len(active) != 1 or active[0].id != run_id or active[0].status != "queued":
@@ -164,7 +166,8 @@ class DemoControl:
                     raise DemoDenied("Demo worker was already resumed")
                 return current
             with self.users.sessions() as session:
-                serialize(session, postgres=self.postgres, key=0x524744454D4F)
+                if not self.postgres:
+                    serialize(session, postgres=False, key=0x524744454D4F)
                 active = session.scalars(select(RunRecord).where(
                     RunRecord.status.in_(("queued", "running"))).limit(2)).all()
                 if len(active) != 1 or active[0].id != current["run_id"]:

@@ -40,7 +40,7 @@ services:
     profiles: [observability]
     command: ["python", "-m", "app.operator_inbox"]
     volumes:
-      - runguard_data:/data
+      - operator_data:/data
     environment:
       RUNGUARD_OPERATOR_INBOX_PATH: /data/operator-alerts.jsonl
     ports:
@@ -83,10 +83,11 @@ services:
     image: runguard-api:local
     profiles: [responder]
     command: ["python", "-m", "app.responder", "once"]
-    volumes:
-      - runguard_data:/data
+    networks:
+      - default
+      - database
     environment:
-      RUNGUARD_DATABASE_URL: sqlite:////data/runguard.db
+      RUNGUARD_DATABASE_URL: postgresql+psycopg://${RUNGUARD_POSTGRES_USER:-runguard}:${RUNGUARD_POSTGRES_PASSWORD:?Set a stable PostgreSQL password in .env}@postgres:5432/${RUNGUARD_POSTGRES_DB:-runguard}
       RUNGUARD_DEMO_MODE: ${RUNGUARD_DEMO_MODE:-false}
       RUNGUARD_DEMO_PROJECT: ${RUNGUARD_DEMO_PROJECT:-}
       RUNGUARD_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-}
@@ -94,3 +95,4 @@ services:
 
 volumes:
   runguard_telemetry:
+  operator_data:
