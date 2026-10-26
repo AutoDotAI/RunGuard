@@ -35,7 +35,12 @@ def snapshot():
 
 
 def page(body=BODY, *, status=200, content_type="text/html; charset=utf-8"):
-    html = f"<html><head><title>Flood &amp; response</title><style>secret style</style></head><body><script>secret script</script><nav>secret navigation</nav><div hidden>secret hidden</div><article><p>{body}</p></article></body></html>"
+    html = (f"<html><head><title>Flood &amp; response</title><style>secret style</style></head>"
+            f"<body><script>secret script</script><nav>secret navigation</nav>"
+            f"<div hidden>secret hidden</div><section aria-hidden=' TRUE '>"
+            f"<div><p>secret aria nested</p><span>secret aria payload</span></div></section>"
+            f"<aside inert>secret inert</aside><div style='display : none'>secret css</div>"
+            f"<article><p>{body}</p></article></body></html>")
     return outbound.FetchResponse(status, {"Content-Type": content_type}, html.encode())
 
 
@@ -53,6 +58,10 @@ def test_readable_html_title_and_single_neutral_model_call():
     assert "secret style" not in llm.calls[0]["user"]
     assert "secret navigation" not in llm.calls[0]["user"]
     assert "secret hidden" not in llm.calls[0]["user"]
+    assert "secret aria nested" not in llm.calls[0]["user"]
+    assert "secret aria payload" not in llm.calls[0]["user"]
+    assert "secret inert" not in llm.calls[0]["user"]
+    assert "secret css" not in llm.calls[0]["user"]
     assert "3 to 6" in llm.calls[0]["system"]
     assert "untrusted" in llm.calls[0]["system"]
     assert "private=value" not in json.dumps(events)

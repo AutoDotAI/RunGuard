@@ -34,8 +34,10 @@ class _VisibleHTML(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attr = dict(attrs)
-        style = (attr.get("style") or "").replace(" ", "").lower()
-        if tag in self.HIDDEN_TAGS or "hidden" in attr or attr.get("aria-hidden") == "true" or "display:none" in style or "visibility:hidden" in style:
+        style = re.sub(r"\s+", "", attr.get("style") or "").lower()
+        aria_hidden = (attr.get("aria-hidden") or "").strip().lower() == "true"
+        if (tag in self.HIDDEN_TAGS or "hidden" in attr or "inert" in attr
+                or aria_hidden or "display:none" in style or "visibility:hidden" in style):
             self.hidden_stack.append(tag)
         elif tag == "title":
             self.in_title = True
