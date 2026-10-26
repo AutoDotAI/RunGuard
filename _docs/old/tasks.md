@@ -178,7 +178,7 @@ Description: Add protected `/settings/ai` navigation and a page using the typed 
 
 ## 47. Snapshot provider and model per run
 Goal: Make every URL Summarizer run use its selected provider/model without hidden fallback.
-Description: At enqueue, copy task #45's setting into the run snapshot; manual retry must copy the original run snapshot, while Website Monitor ignores it. Validate the model allowlist and pass it as a fixed `--model` CLI argument to Codex/Claude or server-side LiteLLM; test exact fake-process arguments, setting edits after enqueue, disabled route errors, and no automatic retry.
+Description: At enqueue, copy task #45's setting into the run snapshot; manual retry must copy the original run snapshot, while Website Monitor ignores it. Validate the model allowlist and pass an explicitly selected model as a fixed `--model` CLI argument to Codex/Claude or to server-side LiteLLM; the catalog's `default` sentinel uses the CLI's native default without a `--model` flag. Test exact fake-process arguments, setting edits after enqueue, disabled route errors, and no automatic retry.
 
 ## 48. Test worker failure boundaries and adapters
 Goal: Reproduce the user's PDF and provider failures and prove bounded worker behavior.
