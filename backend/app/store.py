@@ -1,4 +1,4 @@
-"""Owned worker, run, and log operations backed by SQLite."""
+"""Owned worker, run, and log operations backed by the configured database."""
 
 import json
 import os
@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .db import RunLogRecord, RunRecord, UserRepository, WorkerRecord
+from .db import RunLogRecord, RunRecord, UserRecord, UserRepository, WorkerRecord
 from .run_logs import new_run_log
 from . import observability
 from .models import (
@@ -55,8 +55,8 @@ class PersistentStore:
                  clock: Callable[[], datetime] | None = None):
         self.users = users
         self.clock = clock or (lambda: datetime.now(timezone.utc))
-        # The lock reduces contention within one process. SQLite transactions and
-        # the partial unique index enforce limits across independent processes.
+        # This lock limits contention within one process. PostgreSQL row locks
+        # serialize per-owner worker quota checks across API processes.
         self.lock = RLock()
 
     def create_user(self, email: str, password_hash: str) -> dict:
@@ -72,9 +72,13 @@ class PersistentStore:
         return self.users.by_id(user_id)
 
     @staticmethod
-    def _owned_worker(session: Session, owner: str, worker_id: str, active: bool = True) -> WorkerRecord:
-        worker = session.scalar(select(WorkerRecord).where(
-            WorkerRecord.id == worker_id, WorkerRecord.owner_user_id == owner))
+    def _owned_worker(session: Session, owner: str, worker_id: str, active: bool = True,
+                      for_update: bool = False) -> WorkerRecord:
+        query = select(WorkerRecord).where(
+            WorkerRecord.id == worker_id, WorkerRecord.owner_user_id == owner)
+        if for_update and session.bind.dialect.name == "postgresql":
+            query = query.with_for_update()
+        worker = session.scalar(query)
         if worker is None or (active and worker.archived_at is not None):
             raise Problem(404, "NOT_FOUND", "Worker not found")
         return worker
@@ -130,6 +134,10 @@ class PersistentStore:
             raise Problem(422, "FEATURE_UNAVAILABLE", "Live summaries are unavailable in this demo")
         url = validate_public_url(payload.url)
         with self.lock, self.users.sessions() as session:
+            if session.bind.dialect.name == "postgresql":
+                # All worker creations for one account serialize here, so two
+                # API processes cannot both pass the 20-worker quota check.
+                session.scalar(select(UserRecord.id).where(UserRecord.id == owner).with_for_update())
             total = session.scalar(select(func.count()).select_from(WorkerRecord).where(
                 WorkerRecord.owner_user_id == owner, WorkerRecord.archived_at.is_(None))) or 0
             if total >= 20:
@@ -150,7 +158,7 @@ class PersistentStore:
             raise Problem(422, "VALIDATION_ERROR", "Fields cannot be null")
         url = validate_public_url(payload.url) if payload.url is not None else None
         with self.users.sessions() as session:
-            record = self._owned_worker(session, owner, worker_id)
+            record = self._owned_worker(session, owner, worker_id, for_update=True)
             if payload.name is not None:
                 record.name = payload.name
             if url is not None:
@@ -161,7 +169,7 @@ class PersistentStore:
 
     def archive_worker(self, owner: str, worker_id: str) -> None:
         with self.users.sessions() as session:
-            record = self._owned_worker(session, owner, worker_id)
+            record = self._owned_worker(session, owner, worker_id, for_update=True)
             record.archived_at = now()
             session.commit()
 

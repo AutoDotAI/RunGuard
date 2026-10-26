@@ -1,4 +1,4 @@
-"""RunGuard persistence models and the current SQLite repository adapter."""
+"""RunGuard persistence models and repository adapters."""
 
 import os
 from pathlib import Path
@@ -177,15 +177,19 @@ def default_database_url() -> str:
 class UserRepository:
     def __init__(self, database_url: str | None = None):
         self.database_url = database_url or os.environ.get("RUNGUARD_DATABASE_URL") or default_database_url()
-        if not self.database_url.startswith("sqlite:///"):
-            raise ValueError("RunGuard requires a local SQLite database URL")
-        if self.database_url != "sqlite:///:memory:":
-            Path(self.database_url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
-        self.engine = create_engine(self.database_url,
-                                    connect_args={"check_same_thread": False, "timeout": 30.0})
-        @event.listens_for(self.engine, "connect")
-        def _enable_foreign_keys(connection, _record):
-            connection.execute("PRAGMA foreign_keys=ON")
+        if self.database_url.startswith("sqlite:///"):
+            if self.database_url != "sqlite:///:memory:":
+                Path(self.database_url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
+            self.engine = create_engine(self.database_url,
+                                        connect_args={"check_same_thread": False, "timeout": 30.0})
+
+            @event.listens_for(self.engine, "connect")
+            def _enable_foreign_keys(connection, _record):
+                connection.execute("PRAGMA foreign_keys=ON")
+        elif self.database_url.startswith("postgresql+psycopg://"):
+            self.engine = create_engine(self.database_url, pool_pre_ping=True)
+        else:
+            raise ValueError("RunGuard requires a SQLite or postgresql+psycopg database URL")
         self.sessions = sessionmaker(self.engine, expire_on_commit=False)
 
     def migrate(self) -> None:
