@@ -67,3 +67,73 @@ curl -i http://127.0.0.1:8000/health
 
 The expected response is HTTP `200` with `{"status":"ok"}`. See
 [backend/README.md](backend/README.md) for API behavior and limitations.
+
+## Local Docker Compose
+
+Requirements: Docker Engine with the Compose plugin, available host ports
+`3000` and `8000`, and Python 3 to run the optional smoke script. Run these
+commands at the repository root. Generate `.env` once and **keep it** across
+restarts; the JWT signing secret must be at least 32 bytes. The file is ignored
+by Git.
+
+```bash
+python3 -c 'from pathlib import Path; import secrets; Path(".env").write_text("RUNGUARD_AUTH_SECRET=" + secrets.token_hex(32) + "\n")'
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps --all
+curl -fsS http://127.0.0.1:8000/health
+```
+
+Open <http://localhost:3000/signup>. The backend is reachable at
+<http://localhost:8000>; the frontend image is built with that **browser** API
+origin. New accounts show an empty dashboard. The `migrate` container must
+exit `0` before `api` and `worker` start, and `api` and `web` should be healthy.
+The API and exactly one worker share `runguard_data`, a local named SQLite
+volume. Both published ports bind to loopback only. This setup is for local
+use; public hosting and outbound egress controls are tracked in issue #23.
+
+For a local end-to-end smoke, run:
+
+```bash
+python3 scripts/compose_smoke.py
+docker compose logs --tail=50 api worker web
+docker compose restart
+docker compose ps --all
+docker compose down
+```
+
+The smoke script creates a fresh account, confirms its empty state, creates a
+Website Monitor for `https://example.com/`, enqueues a run, observes the
+separate worker reach a terminal state, and reads timestamped logs. It then
+stops the worker, confirms a second queued run survives an API restart,
+resumes the worker, and verifies login plus saved worker/run/log data after a
+full stack restart. It needs outbound DNS and HTTPS access to `example.com`;
+the target check may fail in a network-restricted environment, but the queue,
+terminal status, and logs must still work. The offline integration tests in
+`backend/tests/integration` are the deterministic check without network or
+provider credentials.
+
+Verified locally on 2026-10-26 with Docker Compose: migration exited `0`,
+`api` and `web` became healthy, `/health` returned `200`, and the web
+`/login` route returned `200`. A headless Chromium signup through the
+containerized frontend reached a genuine empty dashboard. The smoke script
+observed two successful monitor
+runs against `example.com`, seven timestamped logs on the first run, a queued
+run surviving an API restart, and the same account/worker/run/logs after a
+full restart. A second `docker compose up --build -d` completed with the same
+data. A Summarizer run without a model ended as `failed` with `LLM_ERROR`.
+After `docker compose down`, the `runguard_runguard_data` volume remained.
+
+`docker compose down` retains `runguard_data`. **Only**
+`docker compose down --volumes` deletes the local database and accounts. To
+restart an existing installation, reuse the same `.env` and run
+`docker compose up --build -d`; do not regenerate the signing secret.
+`docker compose logs -f api worker web` follows service logs. A missing secret
+fails Compose configuration; a short secret fails the migration preflight.
+
+The stack starts without model credentials. To enable URL Summarizer, append
+`LLM_MODEL` and the selected LiteLLM provider credential to `.env`, then
+recreate the worker with `docker compose up -d --force-recreate worker`. The
+worker alone receives those settings; they are never
+built into the frontend image. Without a model, a summarizer run returns its
+existing `LLM_ERROR` provider-unavailable result.

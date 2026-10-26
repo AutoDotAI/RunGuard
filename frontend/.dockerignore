@@ -1,0 +1,14 @@
+.git
+node_modules
+.output
+dist
+.nitro
+.tanstack
+.vinxi
+.wrangler
+coverage
+.env
+.env.*
+!.env.example
+*.local
+*.log
