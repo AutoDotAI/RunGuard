@@ -1,6 +1,6 @@
 # RunGuard — Product and Technical Specification
 
-**Version:** 1.2 (PostgreSQL and AI provider selection amendment)
+**Version:** 1.3 (local PostgreSQL and AI provider selection amendment)
 **Date:** 2026-10-26  
 **Status:** Approved historical scope, with the local delivery amendment below
 **Project:** AI Dev Tools Zoomcamp 2026 Final Project  
@@ -47,6 +47,12 @@
 > website has been stopped while this migration is prepared. No PostgreSQL
 > migration, restored account, or provider-selection UI may be claimed
 > complete until its own implementation and independent QA pass.
+> **Local-only decision — 2026-10-27:** The owner is not deploying
+> RunGuard. This supersedes the deployment/CD/production rollback wording
+> in earlier sections and in the 2026-10-26 local-delivery amendment. Public
+> hosting, release promotion, and actual-host rollback remain deferred under
+> [issue #34](https://github.com/AutoDotAI/RunGuard/issues/34); do not build
+> or maintain deployment machinery for the current local milestone.
 
 ### Current acceptance target for the storage change
 
@@ -70,11 +76,11 @@
   accidental worker processes must not process the same run. Host Codex or
   Claude CLI remains the default local model route, with server-side LiteLLM
   and an API key as an optional route. A container must not receive a CLI
-  login directory or token. The production worker currently shares the
-  `egress_guard` network namespace: add only a narrowly scoped route to the
-  PostgreSQL service on TCP 5432 before private-CIDR denial, and prove that
-  arbitrary private destinations remain blocked. Moving the database must
-  not weaken the SSRF egress boundary.
+  login directory or token. Keep local URL-fetch SSRF tests and restrictions
+  effective after the database change. If the local worker still shares an
+  `egress_guard` namespace, allow only the PostgreSQL service on TCP 5432
+  before private-CIDR denial and test that other private destinations remain
+  blocked. Moving the database must not weaken that boundary.
 - Provide a **one-time, fail-closed SQLite-to-PostgreSQL importer** for the
   existing local accounts, password hashes, workers, configuration snapshots,
   runs, logs, alerts, and responder records. Take a consistent SQLite backup
@@ -86,16 +92,23 @@
   `runs.retry_of_run_id` self-reference with an ordered or two-pass import.
   Refuse a nonempty target or schema mismatch; document a recovery path.
   Stopping the old site does not authorize deleting its data.
-- Update local Compose, CI, CD validation, backup, and rollback rehearsal to
-  use PostgreSQL. Back up PostgreSQL consistently with `pg_dump`/`pg_restore`
-  or an equivalent verified mechanism, and fail closed when an older image
-  cannot read the newer schema. Tests must run real API-to-worker journeys
+- Update local Compose, CI, and local backup/restore commands to use
+  PostgreSQL. Back up PostgreSQL consistently with `pg_dump`/`pg_restore`
+  or an equivalent verified mechanism. Tests must run real API-to-worker journeys
   against an isolated PostgreSQL instance, including restart persistence,
   concurrent enqueue/claim, and two-user isolation. SQLite may remain only
   as the read-only source for the one-time importer and isolated legacy tests.
-  A pre-cutover rollback can restore the retained SQLite backup and old app
-  only with an explicit warning that PostgreSQL writes made after cutover
-  would be lost; subsequent release rollbacks remain PostgreSQL-to-PostgreSQL.
+  Document local recovery from the retained SQLite backup if the cutover
+  fails, including an explicit warning that PostgreSQL writes made after
+  cutover would be lost. Once the local cutover passes, document and test
+  PostgreSQL backup/restore without adding a deployment release system.
+- Keep the normal local launch to `compose.yaml` and, when observability is
+  desired, `compose.observability.yaml`. Remove or archive unused demo, CD,
+  production, host-AI, responder, and rollback-rehearsal Compose overrides
+  after confirming their needed local services and commands have been
+  incorporated in the two supported files. Retire deployment-only scripts
+  and workflows while retaining useful local migration, backup, security
+  probe, and smoke-test commands. Do not remove stored SQLite data.
 
 ### Current acceptance target for AI configuration and workers
 
@@ -134,10 +147,10 @@
 ### Zoomcamp brief and remaining external evidence
 
 The [course project brief](https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project)
-is an independent review checklist. Keep its deployment, CI/CD, telemetry,
-alert, incident response, test, documentation, and peer-review evidence
-traceable. Current local-only delivery does not prove a public deployment or
-actual-host CD/rollback; issue #34 remains deferred by the owner. Any required
+is an independent review checklist. Keep its telemetry, alert, incident
+response, test, documentation, and peer-review evidence traceable. Public
+deployment and CD rubric items remain acknowledged gaps, deferred by the
+owner under issue #34. Any required
 external peer reviews must be completed by real peers rather than claimed from
 agent QA, and should be tracked separately from implementation work.
 
