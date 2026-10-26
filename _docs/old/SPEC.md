@@ -1,12 +1,12 @@
 # RunGuard — Product and Technical Specification
 
-**Version:** 1.0 (implementation-ready)  
+**Version:** 1.1 (local authentication decision)
 **Date:** 2026-10-26  
 **Status:** Approved product scope; implementation pending  
 **Project:** AI Dev Tools Zoomcamp 2026 Final Project  
 **Target:** Working, demonstrable MVP within approximately 12 hours of implementation
 
-> **Executive decision:** Build a small, authenticated platform that executes **two real, built-in worker types** on demand and makes their results, errors, and step-by-step logs inspectable. Use **Lovable-generated React**, **Supabase Auth**, **FastAPI**, **SQLite**, a **separate Python worker process**, and the **LiteLLM Python SDK**. No scheduling, external-agent execution, automatic job retries, or LangGraph in the MVP.
+> **Executive decision:** Build a small, authenticated platform that executes **two real, built-in worker types** on demand and makes their results, errors, and step-by-step logs inspectable. Use **Lovable-generated React**, **local email/password authentication in FastAPI**, **SQLite**, a **separate Python worker process**, and the **LiteLLM Python SDK**. No scheduling, external-agent execution, automatic job retries, or LangGraph in the MVP.
 
 ---
 
@@ -45,7 +45,7 @@ A reviewer can sign up, create one of each worker type, run both, watch status c
 
 ### 2.1 P0 — Required functional MVP
 
-- Email/password sign-up, login, logout using Supabase Auth.
+- Email/password sign-up, login, and logout using the FastAPI backend, salted password hashes in SQLite, and signed, expiring bearer tokens.
 - Authenticated, per-user CRUD of saved worker configurations.
 - **Website Monitor**: execute an HTTP(S) check and record response code, elapsed time, and success/failure.
 - **AI URL Summarizer**: retrieve readable webpage text, summarize through LiteLLM, save summary and model information.
@@ -89,7 +89,7 @@ A reviewer can sign up, create one of each worker type, run both, watch status c
 | Decision | Choice | Rationale |
 |---|---|---|
 | Frontend | Lovable-generated React + TypeScript | Rapid usable UI; commit exported source to repo |
-| Authentication | Supabase Auth, email/password | Avoid building credential handling |
+| Authentication | FastAPI email/password, salted PBKDF2 hashes, signed bearer JWT | One local auth system without an external project |
 | App backend | FastAPI + Pydantic | Typed API with generated OpenAPI |
 | Persistent app data | SQLite + SQLAlchemy + Alembic | Small deployment; no separate database server |
 | Background execution | Separate Python process polling SQLite | Real worker separation without broker |
@@ -110,11 +110,11 @@ A reviewer can sign up, create one of each worker type, run both, watch status c
 ### 4.1 Authentication
 
 - Unauthenticated visitors are redirected to `/login`.
-- `/signup`: email, password, confirmation/error states.
+- `/signup`: email, password, and validation/error states; successful registration signs in immediately.
 - `/login`: email, password, validation and error display.
-- `/logout`: ends the Supabase session and returns to login.
-- Supabase manages password storage and session refresh; the frontend passes its access token in API requests.
-- No social login, custom role system, or custom password database.
+- `/logout`: clears the browser's bearer token and returns to login; issued tokens expire after eight hours and are not revoked server-side in P0.
+- FastAPI stores only salted password hashes in the SQLite `users` table, never plaintext passwords. `POST /api/v1/auth/register` and `/api/v1/auth/login` return a signed bearer token; the frontend sends it in protected API requests and prompts for login when it expires.
+- No social login, custom role system, email confirmation, or refresh-token service in P0.
 
 ### 4.2 Dashboard (`/dashboard`)
 
@@ -177,7 +177,7 @@ Form validates required fields, displays inline validation errors, and handles A
 - Clean developer-tool design, neutral palette, visible status badges, monospace IDs/times for logs.
 - Accessible form labels, keyboard-accessible buttons, loading/empty/error states.
 - Initially use mock data **only behind a service adapter**; replace mocks with real HTTP API calls without rewriting components.
-- **Never let Lovable write application tables directly to Supabase.** Supabase is for authentication only; all worker/run/log data goes through FastAPI.
+- **Keep authentication and application data behind FastAPI.** The browser must not access SQLite directly; all worker/run/log data goes through the typed API client.
 
 ---
 
@@ -185,7 +185,7 @@ Form validates required fields, displays inline validation errors, and handles A
 
 ### FR-01 — Per-user ownership
 
-- Every saved worker, run, and log is owned by the authenticated Supabase subject (`sub` UUID).
+- Every saved worker, run, and log is owned by the authenticated local user's verified JWT subject (`sub` UUID).
 - Every read/update/delete/run/retry query checks ownership server-side.
 - Attempts to access another user's ID return **404** (avoid information leakage).
 - An invalid or missing access token returns **401**.
@@ -293,15 +293,15 @@ running -> failed
                     Browser
                       |
              Lovable-generated React
-             Supabase Auth session
+             Local auth session
                       |
            HTTPS + Bearer access JWT
                       v
               FastAPI REST API
-          (JWT verify, ownership, CRUD)
+          (register/login, JWT verify, CRUD)
                       |
                SQLite database
-       (users by auth sub, workers, runs,
+       (users, workers, runs,
           run_logs, optional alerts)
                       ^
                       |
@@ -323,11 +323,11 @@ running -> failed
 
 **`web`**
 - React/TypeScript application generated with Lovable; code in GitHub repo.
-- Supabase JS client handles sessions only.
-- Typed `apiClient` attaches Bearer JWT and consumes documented REST API.
+- The frontend auth adapter calls FastAPI register/login and clears the token on logout.
+- Typed `apiClient` attaches the backend-issued Bearer JWT and consumes documented REST API.
 
 **`api`**
-- FastAPI validates JWT, authorizes records, validates requests and URLs.
+- FastAPI hashes passwords, issues and verifies JWTs, authorizes records, and validates requests and URLs.
 - Writes queue entries and exposes read/status/log endpoints.
 - Never performs a long-running background job itself.
 
@@ -354,14 +354,23 @@ running -> failed
 
 ## 7. Data model
 
-Use UUID text primary keys for `workers` and `runs`; integer autoincrement for append-only `run_logs`.
+Use UUID text primary keys for `users`, `workers`, and `runs`; integer autoincrement for append-only `run_logs`.
+
+### `users`
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | TEXT UUID PK | Local account ID and JWT `sub` |
+| `email` | TEXT NOT NULL UNIQUE | Normalized lowercase login email |
+| `password_hash` | TEXT NOT NULL | Salted PBKDF2-HMAC-SHA256 hash; never plaintext |
+| `created_at` | TEXT NOT NULL | UTC timestamp |
 
 ### `workers`
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | TEXT UUID PK | Random UUID |
-| `owner_user_id` | TEXT NOT NULL | Verified Supabase `sub`; indexed |
+| `owner_user_id` | TEXT NOT NULL FK | Verified local JWT `sub`, referencing `users.id`; indexed |
 | `name` | TEXT NOT NULL | 1–80 characters |
 | `kind` | TEXT NOT NULL | `website_monitor` / `url_summarizer` |
 | `url` | TEXT NOT NULL | Validated public HTTP(S) URL |
@@ -417,7 +426,7 @@ Use UUID text primary keys for `workers` and `runs`; integer autoincrement for a
 ## 8. Backend API contract (v1)
 
 **Prefix:** `/api/v1`  
-**Auth:** `Authorization: Bearer <Supabase access token>` except health endpoints.  
+**Auth:** `Authorization: Bearer <backend-issued access token>` except `/health`, `/auth/register`, and `/auth/login`.
 **Content type:** `application/json`.  
 **Time format:** UTC ISO 8601.  
 **OpenAPI:** FastAPI-generated `/openapi.json` (checked into repo as `openapi.yaml` or `openapi.json` for frontend contract review).
@@ -427,6 +436,8 @@ Use UUID text primary keys for `workers` and `runs`; integer autoincrement for a
 | Method | Endpoint | Expected behavior | Response |
 |---|---|---|---|
 | GET | `/health` | API readiness; never leak secrets | `200` or `503` |
+| POST | `/auth/register` | Create local user with salted password hash; return bearer token | `201` / `409` / `422` |
+| POST | `/auth/login` | Verify password hash; return bearer token | `200` / `401` / `422` |
 | GET | `/workers` | Active workers, paginated | `200` |
 | POST | `/workers` | Create saved worker | `201` |
 | GET | `/workers/{worker_id}` | View owned active worker | `200` / `404` |
@@ -443,6 +454,17 @@ Use UUID text primary keys for `workers` and `runs`; integer autoincrement for a
 All routes above are relative to `/api/v1`.
 
 ### 8.2 Request/response examples
+
+Register or sign in:
+
+```http
+POST /api/v1/auth/register
+Content-Type: application/json
+
+{"email":"developer@example.com","password":"a-unique-password"}
+```
+
+`POST /api/v1/auth/login` accepts the same body. Registration returns `201` and login returns `200`, both with `{ "access_token": "<signed-JWT>", "token_type": "bearer", "user": { "id": "UUID", "email": "developer@example.com" } }`; passwords and hashes are never returned. A duplicate email returns `409 ACCOUNT_EXISTS`, bad credentials return `401 INVALID_CREDENTIALS`, and malformed input returns `422`.
 
 Create a monitor:
 
@@ -620,11 +642,12 @@ These controls are especially important because users can enter arbitrary URLs a
 
 ### 10.1 Auth and tenant isolation
 
-- Supabase handles sign-in and credential storage. FastAPI validates the **actual signature** of the JWT (JWKS for projects using asymmetric signing; use the supported Supabase Auth verification path for legacy symmetric signing), issuer, audience, expiry, and `sub`.
+- FastAPI handles registration and login. Normalize emails, store salted PBKDF2-HMAC-SHA256 password hashes in SQLite, compare hashes safely, and never log or return passwords or hashes.
+- Issue signed HS256 JWTs with `sub` (local user UUID), issuer, audience, issued-at time, and an eight-hour expiry. Keep the signing secret server-side, at least 32 bytes, and verify signature, issuer, audience, expiry, and `sub` on every protected request.
 - Do not trust JWT payload merely because it decodes.
-- The browser may hold the public Supabase URL/anon key; **never** expose a Supabase service-role key or any LLM provider key.
+- `/health`, `/auth/register`, and `/auth/login` are public; all other application endpoints require the bearer token. Frontend logout deletes its stored token; because P0 has no revocation list, a copied token remains valid until expiry.
+- Never expose the signing secret or any LLM provider key to the browser. Serve the deployed application over HTTPS, restrict CORS, and rate-limit register/login attempts and run creation.
 - Backend derives owner ID exclusively from verified JWT; requests never control `owner_user_id`.
-- Restrict CORS to known frontend origin(s), use HTTPS in deployed environments, and rate-limit run creation.
 
 ### 10.2 SSRF prevention: required for public deployment
 
@@ -640,7 +663,7 @@ These controls are especially important because users can enter arbitrary URLs a
 
 ### 10.3 Secrets and sensitive content
 
-- LLM provider keys and Supabase server-side config remain in `.env`/secret manager, excluded from Git.
+- LLM provider keys and the JWT signing secret remain in `.env`/secret manager, excluded from Git.
 - Sanitize errors, redact URL query strings and authorization headers in telemetry, and exclude webpage bodies from logs.
 - Avoid putting PII/page content into tracing spans.
 - Encode summary text safely on the frontend (no unsanitized HTML rendering).
@@ -668,7 +691,7 @@ runguard/
 │   ├── src/
 │   │   ├── pages/                    # Login, Dashboard, Workers, Run Details
 │   │   ├── components/
-│   │   ├── lib/supabase.ts
+│   │   ├── lib/auth.tsx              # Backend register/login and bearer session
 │   │   ├── services/apiClient.ts     # Only path to application backend
 │   │   └── types/api.ts
 │   └── Dockerfile
@@ -676,7 +699,7 @@ runguard/
 │   ├── app/
 │   │   ├── main.py                  # FastAPI
 │   │   ├── api/                     # Routes / schemas
-│   │   ├── core/                    # JWT verifier, config, logging
+│   │   ├── core/                    # Password/JWT auth, config, logging
 │   │   ├── db/                      # SQLAlchemy, migrations
 │   │   ├── services/                # Ownership, queue logic, dashboard
 │   │   ├── workers/
@@ -729,7 +752,7 @@ Only create additional files when the feature needs them; do not produce empty s
 3. Freeze frontend data types; author/verify OpenAPI contract.
 4. Implement FastAPI API from contract with temporary/mock persistence, then SQLite.
 5. Implement independent worker loop and two handlers.
-6. Replace frontend mocks with real API calls and Supabase session bearer token.
+6. Replace frontend mocks with real API calls and the backend-issued bearer token.
 7. Have QA agent separately test end-to-end flow and report discrepancies.
 8. Containerize; run integration/e2e checks; deploy; instrument; document.
 
@@ -737,7 +760,7 @@ Only create additional files when the feature needs them; do not produce empty s
 
 Use this as the initial brief in Lovable (then provide this complete spec):
 
-> Build a responsive React/TypeScript dashboard for RunGuard, a developer tool for manually executing saved Website Monitor and AI URL Summarizer jobs. Include authentication screens using Supabase Auth, dashboard, worker list, create/edit worker, worker detail/history, and run detail with timestamped logs and manual retry. Use a typed `apiClient` interface and mock data until the OpenAPI contract is ready. Do not create Supabase application tables or call Supabase directly for workers/runs/logs: all app data will come from a FastAPI REST backend. Show queued/running/succeeded/failed states, errors, loading, and empty states. No scheduling, external agent connection, or WebSockets.
+> Build a responsive React/TypeScript dashboard for RunGuard, a developer tool for manually executing saved Website Monitor and AI URL Summarizer jobs. Include email/password authentication screens backed by FastAPI, dashboard, worker list, create/edit worker, worker detail/history, and run detail with timestamped logs and manual retry. Use a typed `apiClient` interface and mock data until the OpenAPI contract is ready. All account, worker, run, and log data will come from FastAPI; do not store plaintext passwords in the browser. Show queued/running/succeeded/failed states, errors, loading, and empty states. No scheduling, external agent connection, or WebSockets.
 
 ---
 
@@ -874,7 +897,7 @@ Recommended for the SQLite architecture: one small Linux VM/VPS with Docker Comp
 
 - Lovable generates frontend code; export/commit it to the repository and deploy it like a normal React build.
 - Do not depend on Lovable hosting the backend or persisting SQLite.
-- Configure Supabase allowed redirect URLs and backend JWT issuer/audience.
+- Configure the backend JWT signing secret, issuer/audience, HTTPS, and frontend origin; no external auth project is required.
 - Only one API replica and one worker process in v1.
 - Set public URL egress restrictions and resource quotas **before public exposure**.
 - Document first-run signup so peer reviewers can use the deployed application.
@@ -905,7 +928,7 @@ This is a **priority budget**, not a promise that every optional feature fits. S
 | 0.5 h | Commit spec, define backlog/issues and AGENTS.md | P0 |
 | 1.5 h | Lovable mocked frontend, auth UI and screens | P0 |
 | 1.0 h | OpenAPI contract and typed service adapter | P0 |
-| 2.0 h | FastAPI + Supabase JWT + SQLite CRUD/queue | P0 |
+| 2.0 h | FastAPI local auth + SQLite CRUD/queue | P0 |
 | 1.5 h | Separate worker + HTTP monitor + LiteLLM summarizer | P0 |
 | 1.0 h | Unit/integration tests incl. tenant isolation/retry | P0 |
 | 1.0 h | Docker Compose, persistent volume, local smoke test | P0 |
@@ -926,7 +949,7 @@ Create these as public GitHub Issues and link commits/PRs so evaluators see the 
 |---|---|---|---|
 | RG-01 | Repository, spec and agent process | SPEC + AGENTS.md + team docs + public issue tracker | — |
 | RG-02 | Lovable React screens and service adapter | Screens navigable with mocks and loading/error states | RG-01 |
-| RG-03 | Auth + API contract | Supabase login; generated OpenAPI; backend verifies JWT | RG-02 |
+| RG-03 | Auth + API contract | Local register/login; generated OpenAPI; backend verifies JWT | RG-02 |
 | RG-04 | SQLite schema and worker CRUD | Migrations + CRUD + per-user isolation tests | RG-03 |
 | RG-05 | Run queue and separate worker | API returns 202, worker processes job, logs persist | RG-04 |
 | RG-06 | Website Monitor | Real HTTP checks, success/failure/timeout tests | RG-05 |
@@ -972,7 +995,7 @@ This section maps planned evidence to the **current official 2026 final-project 
 | Public user-supplied URLs | SSRF, metadata/internal service access | Verified outbound policy or restrictive domain allowlist; block public exposure otherwise |
 | SQLite used across multiple hosts | Divergent queues/data corruption | One host, one persistent local volume, one worker process |
 | Provider has no balance/key | Summarizer demonstration fails | Mocked CI plus a documented real-provider smoke test; configure key before demo |
-| Lovable generates direct Supabase data calls | Broken architecture and duplicated access paths | Explicit auth-only instruction + typed FastAPI service adapter |
+| Lovable keeps mock or browser-only account data | Broken ownership and nonpersistent sessions | Route auth and application data through FastAPI; store hashed passwords in SQLite |
 | LLM page text tries prompt injection | Wrong/untrusted summary behavior | Fixed prompt, no tools, strict untrusted-content separation |
 | Worker killed mid-run | Stuck running job | Startup reconciliation to failed, preserved logs, manual retry |
 | Telemetry too complex for deadline | Core app remains unfinished | Deliver logs+run UI first; add collector/agent only after deploy |
@@ -990,7 +1013,7 @@ This section maps planned evidence to the **current official 2026 final-project 
 - [ ] Screenshots: login, dashboard, saved workers, successful monitor, successful summary, failed run/logs, retry.
 - [ ] API docs/OpenAPI contract committed and accurate.
 - [ ] Unit + integration tests pass via documented command.
-- [ ] Docker Compose works on a clean clone with documented external auth/provider setup.
+- [ ] Docker Compose works on a clean clone with documented local auth setup and external model-provider setup.
 - [ ] SQLite persists across container restarts on local persistent volume.
 - [ ] Deployed application or verifiable deployment demo accessible to reviewers.
 - [ ] CI workflow status visible; deploy and rollback path documented.

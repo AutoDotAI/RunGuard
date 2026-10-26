@@ -9,8 +9,8 @@ This is ONE Git repository for an existing Lovable-generated React/TypeScript fr
 - Task tracker: public GitHub Issues.
 
 ## Architectural guardrails
-1. Before editing, inspect the actual Lovable source, package scripts and Supabase use. **Do not overwrite, regenerate or relocate existing frontend files without showing why.** Keep the Lovable Vite app at repository root if that preserves synchronization.
-2. Supabase is used for **Auth only**. The browser sends the Supabase access JWT to FastAPI. FastAPI cryptographically verifies the token and enforces per-user ownership. The frontend must not directly query Supabase tables for workers, runs or logs.
+1. Before editing, inspect the actual Lovable source, package scripts and authentication adapter. **Do not overwrite, regenerate or relocate existing frontend files without showing why.** Preserve the Lovable source snapshot and its synchronization workflow.
+2. FastAPI owns local email/password authentication. Store salted password hashes in SQLite, issue signed expiring bearer JWTs, and derive per-user ownership from the verified subject. The frontend must use FastAPI for auth and for workers, runs, and logs; never store plaintext passwords in the browser.
 3. App database is SQLite through SQLAlchemy and migrations. A dedicated Python worker claims durable queued jobs through short transactions. Do not execute user jobs inside FastAPI request handling, and do not substitute Celery, Redis, LangGraph or PostgreSQL without explicit approval.
 4. Two worker types: `website_monitor` and `url_summarizer`. The latter uses LiteLLM as a provider abstraction. Model and keys live on the server. No automatic job retries; manual retry creates a new run from the original snapshot.
 5. Public URL fetching is a security boundary: SSRF prevention requires more than URL parsing or DNS validation. Until destination pinning/egress control is proven, gate production to a restricted public-host allowlist **and enforce egress restrictions**; do not advertise arbitrary URL support as secure.

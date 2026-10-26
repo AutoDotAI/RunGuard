@@ -357,7 +357,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
-      description: Missing, invalid or expired Supabase access token
+      description: Missing, invalid or expired backend-issued bearer token
       content:
         application/json:
           schema:

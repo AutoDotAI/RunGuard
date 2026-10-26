@@ -1,6 +1,6 @@
 # RunGuard task backlog
 
-These are proposed work items, not completed work or existing GitHub issues. The approved behavior is in `_docs/SPEC.md`; the current `backend/` is an in-memory demo and `frontend/` is the Lovable app.
+These are proposed work items; the public GitHub issues are the live tracker. The approved behavior is in `_docs/old/SPEC.md`; the current `backend/` is an in-memory demo and `frontend/` is the Lovable app.
 
 ## 1. Set up an empty project with a passing test
 Goal: Establish a clean-checkout baseline that starts and passes one automated test.
@@ -12,23 +12,23 @@ Description: Inspect the outer Git root and the nested Git repository in `fronte
 
 ## 3. Freeze the production API contract
 Goal: Make `openapi.yaml` describe the approved P0 API and the actual frontend data types.
-Description: Compare `openapi.yaml` with `frontend/src/lib/api/types.ts` and `_docs/SPEC.md` §8, including pagination, errors, JWT authentication, and all run states. Resolve the temporary local-auth endpoints versus the approved Supabase Auth design, then add a contract check that catches missing routes or incompatible schemas.
+Description: Compare `openapi.yaml` with `frontend/src/lib/api/types.ts` and `_docs/old/SPEC.md` §8, including pagination, errors, local register/login, signed bearer authentication, and all run states. Keep the backend-owned auth endpoints in the production contract and add a check that catches missing routes or incompatible schemas.
 
-## 4. Add Supabase Auth to the frontend
-Goal: Replace browser-stored mock accounts with real Supabase email/password sessions.
-Description: Implement the existing auth adapter in `frontend/src/lib/auth.tsx` using Supabase Auth only, including signup confirmation, login, logout, refresh, and expired-session handling. Keep workers, runs, and logs out of Supabase tables; verify protected routes with an authenticated and unauthenticated browser session.
+## 4. Connect frontend local authentication
+Goal: Replace browser-stored mock accounts with FastAPI email/password registration and login.
+Description: Implement `frontend/src/lib/auth.tsx` against `/api/v1/auth/register` and `/api/v1/auth/login`, store only the returned bearer token and user identity, and clear them on logout. Handle validation, duplicate accounts, invalid credentials, expired tokens, and protected-route redirects; never store plaintext passwords in the browser.
 
-## 5. Verify Supabase access tokens in FastAPI
-Goal: Authenticate every non-health API request with a cryptographically verified Supabase JWT.
-Description: Replace the demo token issuer in `backend/app/auth.py` with signature, issuer, audience, expiry, and subject checks from the approved Supabase project. Add tests for missing, forged, expired, and valid tokens, and derive ownership only from the verified subject.
+## 5. Persist local accounts and verify bearer tokens
+Goal: Authenticate every protected API request using local SQLite accounts and signed, expiring JWTs.
+Description: Move the demo users and salted password hashes into the SQLite `users` table, and keep registration/login in FastAPI with normalized unique emails. Verify signature, issuer, audience, expiry, and subject in `backend/app/auth.py`; test bad credentials, duplicate accounts, forged or expired tokens, and ownership from the verified subject.
 
 ## 6. Build the persistent SQLite database
 Goal: Persist workers, runs, and run logs across API and worker restarts.
-Description: Replace `backend/app/store.py`'s process-local dictionaries with SQLAlchemy models and an Alembic migration for the tables and indexes in `_docs/SPEC.md` §7. Test migration from an empty database and verify an API restart retains saved data.
+Description: Replace `backend/app/store.py`'s process-local dictionaries with SQLAlchemy models and an Alembic migration for the tables and indexes in `_docs/old/SPEC.md` §7. Test migration from an empty database and verify an API restart retains saved data.
 
 ## 7. Build the owned worker CRUD backend
 Goal: Provide persistent create, list, view, edit, and soft-archive operations for worker configurations.
-Description: Implement the worker routes in `backend/app/routers/workers.py` against SQLite, with server-side name, kind, URL, quota, and ownership rules from `_docs/SPEC.md` §§4–5. Test 401 for unauthenticated requests, 404 for another user's IDs, immutable kind, and preserved history after archive.
+Description: Implement the worker routes in `backend/app/routers/workers.py` against SQLite, with server-side name, kind, URL, quota, and ownership rules from `_docs/old/SPEC.md` §§4–5. Test 401 for unauthenticated requests, 404 for another user's IDs, immutable kind, and preserved history after archive.
 
 ## 8. Add durable run enqueueing
 Goal: Return `202` only after a queued run and its configuration snapshot are stored.
@@ -40,7 +40,7 @@ Description: Add a worker entry point under `backend/app/workers/` that atomical
 
 ## 10. Enforce the outbound URL policy
 Goal: Prevent server-side requests to unsafe destinations before enabling real URL fetching.
-Description: Implement the rules in `_docs/security.md` for schemes, credentials, ports, local and reserved addresses, redirects, DNS rebinding risk, response limits, and production egress restrictions. Test blocked destinations and redirects with injected HTTP transport; do not claim arbitrary URL support safe without destination pinning or restricted egress.
+Description: Implement the rules in `_docs/old/SPEC.md` §10.2 for schemes, credentials, ports, local and reserved addresses, redirects, DNS rebinding risk, response limits, and production egress restrictions. Test blocked destinations and redirects with injected HTTP transport; do not claim arbitrary URL support safe without destination pinning or restricted egress.
 
 ## 11. Implement the Website Monitor handler
 Goal: Execute a bounded HTTP check and persist its real outcome.
@@ -60,15 +60,15 @@ Description: Implement `POST /api/v1/runs/{run_id}/retry` so the new queued run 
 
 ## 15. Replace demo dashboard calculations
 Goal: Return accurate 24-hour counts, success rate, duration, and recent executions from SQLite.
-Description: Implement `GET /api/v1/dashboard/summary` using owned persisted runs and the definitions in `_docs/SPEC.md` §4.2. Test the empty state, exclusion of active runs from success rate, and the 24-hour boundary; remove seeded sample results from the production path.
+Description: Implement `GET /api/v1/dashboard/summary` using owned persisted runs and the definitions in `_docs/old/SPEC.md` §4.2. Test the empty state, exclusion of active runs from success rate, and the 24-hour boundary; remove seeded sample results from the production path.
 
 ## 16. Build the approved frontend screens
 Goal: Make the Lovable React app cover every P0 user journey before live data integration.
-Description: Check `frontend/src/routes/` against `_docs/SPEC.md` §4 and complete any missing login, dashboard, worker form/list/detail, run detail, failure, retry, loading, empty, and error states using the existing design system. Keep the frontend's current structure and Lovable history, and verify the build and route tests with mocked API responses.
+Description: Check `frontend/src/routes/` against `_docs/old/SPEC.md` §4 and complete any missing login, dashboard, worker form/list/detail, run detail, failure, retry, loading, empty, and error states using the existing design system. Keep the frontend's current structure and Lovable history, and verify the build and route tests with mocked API responses.
 
 ## 17. Connect the frontend to the backend
 Goal: Display real owned backend data through one typed frontend service adapter.
-Description: Replace `frontend/src/lib/api/client.ts`'s mock selection with HTTP calls matching `openapi.yaml` and attach the current Supabase access token. Verify create, edit, archive, run, logs, retry, dashboard, and 401 handling without fabricated production data.
+Description: Replace `frontend/src/lib/api/client.ts`'s mock selection with HTTP calls matching `openapi.yaml` and attach the backend-issued bearer token from the auth adapter. Verify create, edit, archive, run, logs, retry, dashboard, and 401 handling without fabricated production data.
 
 ## 18. Cover backend rules with unit tests
 Goal: Catch backend validation, ownership, state, and worker-handler errors before integration.
@@ -80,7 +80,7 @@ Description: Add tests under `frontend/src/` for protected-route redirects, form
 
 ## 20. Cover the full path with integration tests
 Goal: Prove authenticated API, SQLite, and separate worker behavior together.
-Description: Use temporary SQLite plus fake HTTP and LiteLLM adapters to test two-user isolation, enqueue-to-terminal transitions, persisted logs, retry, worker stop/restart, orphan reconciliation, and database persistence. Keep CI independent of live sites, paid providers, and real Supabase credentials.
+Description: Use temporary SQLite plus fake HTTP and LiteLLM adapters to test registration/login, two-user isolation, enqueue-to-terminal transitions, persisted logs, retry, worker stop/restart, orphan reconciliation, and database persistence. Keep CI independent of live sites, paid providers, and external auth credentials.
 
 ## 21. Containerize web, API, and worker
 Goal: Start the complete local system with a single Docker Compose command.
@@ -92,11 +92,11 @@ Description: Add a GitHub Actions workflow that installs locked dependencies, ru
 
 ## 23. Deploy a safe public demo
 Goal: Make the full frontend, API, and worker journey available over HTTPS.
-Description: Deploy one API replica and one worker on the same host with persistent SQLite, a TLS reverse proxy, protected secrets, limited origins, and outbound controls from `_docs/security.md`. Verify signup, both real worker types, failure, logs, and retry from a clean browser before sharing the URL.
+Description: Deploy one API replica and one worker on the same host with persistent SQLite, a TLS reverse proxy, protected secrets, limited origins, and outbound controls from `_docs/old/SPEC.md` §10.2. Verify signup, both real worker types, failure, logs, and retry from a clean browser before sharing the URL.
 
 ## 24. Add a controlled CD promotion path
 Goal: Deploy a tested, versioned image without an unreviewed production change.
-Description: Configure a development deployment from the main branch and a manual production promotion of an already tested image digest, as described in `_docs/SPEC.md` §14. Keep dev/prod configuration and SQLite volumes separate and record the deployed digest and smoke-test outcome.
+Description: Configure a development deployment from the main branch and a manual production promotion of an already tested image digest, as described in `_docs/old/SPEC.md` §14. Keep dev/prod configuration and SQLite volumes separate and record the deployed digest and smoke-test outcome.
 
 ## 25. Test the rollback path
 Goal: Restore the prior known-good application version after a bad deployment.
@@ -108,7 +108,7 @@ Description: Emit sanitized structured logs and correlated traces across API and
 
 ## 27. Alert on real user impact
 Goal: Raise a visible alert for failed jobs or a queue stalled by an unhealthy worker.
-Description: Implement the `_docs/SPEC.md` §13 trigger of repeated user run failures in five minutes or a run queued over 60 seconds because the worker is unhealthy, and store an alert linked to the affected run. Distinguish a target site's HTTP failure from a RunGuard platform outage; test open and resolved states and display the alert in the frontend.
+Description: Implement the `_docs/old/SPEC.md` §13 trigger of repeated user run failures in five minutes or a run queued over 60 seconds because the worker is unhealthy, and store an alert linked to the affected run. Distinguish a target site's HTTP failure from a RunGuard platform outage; test open and resolved states and display the alert in the frontend.
 
 ## 28. Create a controlled alert trigger
 Goal: Reproduce an alert and capture evidence from symptom through recovery.

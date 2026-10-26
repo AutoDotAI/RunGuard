@@ -26,6 +26,6 @@ curl -sS -X POST http://127.0.0.1:8000/api/v1/auth/register \
 Run tests with `cd backend && uv run pytest -q`. API documentation is at
 `http://127.0.0.1:8000/docs`. The Lovable frontend still selects its local mock
 client; it has not yet been wired to this API. This backend is for local demo
-work and does not satisfy the approved Supabase, SQLite, worker, or deployment
-security gates described in the project backlog issues. See the repository-root
+work and does not satisfy the approved persistent SQLite accounts/data, worker,
+or deployment security gates described in the project backlog issues. See the repository-root
 `openapi.yaml` for this demo API's current contract.
