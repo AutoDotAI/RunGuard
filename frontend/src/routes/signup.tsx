@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { AuthForm } from "@/components/app/AuthForm";
 import { auth } from "@/lib/auth";
 
@@ -16,12 +17,13 @@ export const Route = createFileRoute("/signup")({
 
 function Signup() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   return (
     <AuthForm
       mode="signup"
       onSubmit={async (e, p) => {
         await auth.signUp(e, p);
-        await auth.signIn(e, p);
+        queryClient.clear();
         navigate({ to: "/dashboard" });
       }}
     />

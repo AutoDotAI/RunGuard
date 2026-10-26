@@ -3,8 +3,10 @@
 RunGuard is being built in [public issues](https://github.com/AutoDotAI/RunGuard/issues).
 This checkout currently contains a **demo FastAPI backend** with process-local
 sample data and a passing health test, plus a source snapshot of the existing
-Lovable frontend in `frontend/`. The production auth, SQLite, worker, and
-frontend API integration are follow-up issues. Lovable editor commits still go
+Lovable frontend in `frontend/`. The frontend uses the backend's local
+registration and login endpoints; persistent SQLite accounts, worker execution,
+and frontend application-data integration are follow-up issues. Lovable editor
+commits still go
 to `AutoDotAI/screenshot-guard-studio`; see
 [_docs/lovable-sync.md](_docs/lovable-sync.md) before importing later changes.
 
@@ -20,8 +22,11 @@ npm test
 npm run dev
 ```
 
-The current frontend uses local mock auth and data. `npm run dev` starts its
-development server; it does not connect to the demo backend yet.
+For local authentication against the backend on port 8000, copy
+`frontend/.env.example` to `frontend/.env.local` before `npm run dev`.
+`VITE_API_BASE_URL` contains only the API origin, not a secret; omit it when
+the frontend and API share one origin. Worker and run data still use the
+mock client until Issue #17.
 
 ## Backend baseline
 
