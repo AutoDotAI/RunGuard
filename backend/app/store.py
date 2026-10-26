@@ -152,7 +152,7 @@ class PersistentStore:
 
     def _enqueue(self, session: Session, owner: str, worker: WorkerRecord,
                  url: str, retry_of: str | None, name: str,
-                 config_snapshot_json: str) -> EnqueuedRun:
+                 config_snapshot_json: str, kind: str) -> EnqueuedRun:
         active_count = session.scalar(select(func.count()).select_from(RunRecord).where(
             RunRecord.owner_user_id == owner,
             RunRecord.status.in_(("queued", "running")))) or 0
@@ -166,7 +166,7 @@ class PersistentStore:
             raise Problem(429, "TOO_MANY_ACTIVE_RUNS", "At most 10 runs may be active")
         timestamp = now()
         run = RunRecord(id=str(uuid4()), worker_id=worker.id, owner_user_id=owner,
-                        worker_name_snapshot=name, kind=worker.kind, url_snapshot=url,
+                        worker_name_snapshot=name, kind=kind, url_snapshot=url,
                         config_snapshot_json=config_snapshot_json, status="queued",
                         created_at=timestamp, started_at=None, finished_at=None,
                         duration_ms=None, http_status=None, result_json=None,
@@ -196,7 +196,7 @@ class PersistentStore:
             session.execute(text("BEGIN IMMEDIATE"))
             worker = self._owned_worker(session, owner, worker_id)
             return self._enqueue(session, owner, worker, worker.url, None,
-                                 worker.name, worker.config_json)
+                                 worker.name, worker.config_json, worker.kind)
 
     def retry_run(self, owner: str, run_id: str) -> EnqueuedRun:
         with self.lock, self.users.sessions() as session:
@@ -209,7 +209,7 @@ class PersistentStore:
                 raise Problem(409, "WORKER_ARCHIVED", "Archived workers cannot be retried")
             return self._enqueue(session, owner, worker, original.url_snapshot,
                                  run_id, original.worker_name_snapshot,
-                                 original.config_snapshot_json)
+                                 original.config_snapshot_json, original.kind)
 
     def list_runs(self, owner: str, worker_id: str | None, status: str | None,
                   page: int, size: int) -> RunPage:
