@@ -22,6 +22,7 @@ MAX_BODY_BYTES = 1024 * 1024
 FETCH_TIMEOUT_SECONDS = 10.0
 _LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _DNS_SLOT = threading.BoundedSemaphore(1)
+_HTTP_SLOT = threading.BoundedSemaphore(1)
 
 
 class OutboundError(Exception):
@@ -190,6 +191,39 @@ def fetch(url: str, *, resolver: Callable[[str], Sequence[str]] = resolve_addres
     deadline = time.monotonic() + FETCH_TIMEOUT_SECONDS
     parsed = parse_public_url(url)
     address = _resolve_before_deadline(parsed.hostname, resolver, deadline)[0]
+    if deadline <= time.monotonic():
+        raise OutboundError("FETCH_TIMEOUT", "Destination request timed out")
+    # http.client may make many successful recv calls inside getresponse/read;
+    # socket timeouts are per recv, so a slow drip can exceed the deadline.
+    # One bounded daemon I/O slot guarantees the caller's wall-clock deadline
+    # without accumulating unbounded abandoned fetch threads.
+    if not _HTTP_SLOT.acquire(blocking=False):
+        raise OutboundError("FETCH_ERROR", "Destination request unavailable")
+    outcome: queue.Queue[tuple[bool, object]] = queue.Queue(maxsize=1)
+
+    def request_once() -> None:
+        try:
+            result = (True, _perform_fetch(parsed, address, connection_factory, deadline))
+        except Exception as exc:
+            result = (False, exc)
+        finally:
+            _HTTP_SLOT.release()
+        outcome.put(result)
+
+    threading.Thread(target=request_once, daemon=True, name="runguard-http").start()
+    try:
+        ok, result = outcome.get(timeout=max(0, deadline - time.monotonic()))
+    except queue.Empty:
+        raise OutboundError("FETCH_TIMEOUT", "Destination request timed out") from None
+    if not ok:
+        if isinstance(result, OutboundError):
+            raise result
+        raise OutboundError("FETCH_ERROR", "Destination request failed") from None
+    return result
+
+
+def _perform_fetch(parsed: PublicURL, address: str, connection_factory: Callable,
+                   deadline: float) -> FetchResponse:
     connection = None
     try:
         connection = connection_factory(parsed.scheme, parsed.hostname, address,

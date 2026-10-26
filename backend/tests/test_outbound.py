@@ -105,6 +105,47 @@ def test_dns_lookup_is_wall_clock_bounded_and_stuck_lookup_fails_closed(monkeypa
         outbound._DNS_SLOT.release()
 
 
+@pytest.mark.parametrize("phase", ["headers", "body"])
+def test_slow_drip_cannot_extend_total_http_deadline(monkeypatch, phase):
+    client, server = socket.socketpair()
+    monkeypatch.setattr(outbound, "FETCH_TIMEOUT_SECONDS", 0.08)
+    monkeypatch.setattr(socket, "create_connection", lambda *args, **kwargs: client)
+
+    def serve():
+        try:
+            server.recv(4096)
+            if phase == "headers":
+                payload = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+                for byte in payload:
+                    server.sendall(bytes([byte]))
+                    time.sleep(0.01)
+            else:
+                server.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 40\r\n\r\n")
+                for _ in range(40):
+                    server.sendall(b"x")
+                    time.sleep(0.01)
+        except OSError:
+            pass
+        finally:
+            server.close()
+
+    peer = threading.Thread(target=serve, daemon=True)
+    peer.start()
+    start = time.monotonic()
+    try:
+        with pytest.raises(outbound.OutboundError) as error:
+            outbound.fetch("http://example.com/", resolver=lambda _host: ["8.8.8.8"])
+        assert error.value.code == "FETCH_TIMEOUT"
+        assert time.monotonic() - start < 0.25
+        with pytest.raises(outbound.OutboundError) as retry:
+            outbound.fetch("http://example.com/", resolver=lambda _host: ["8.8.8.8"])
+        assert retry.value.code == "FETCH_ERROR"
+    finally:
+        peer.join(timeout=2)
+        assert outbound._HTTP_SLOT.acquire(timeout=2)
+        outbound._HTTP_SLOT.release()
+
+
 class FakeResponse:
     def __init__(self, status=200, chunks=None, headers=None):
         self.status = status
