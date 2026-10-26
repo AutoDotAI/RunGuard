@@ -4,6 +4,8 @@ import argparse
 import fcntl
 import json
 import os
+import shutil
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +21,7 @@ from app.run_logs import new_run_log, safe_event
 from app.store import now
 from app import observability
 from .types import HandlerOutcome, RunSnapshot
+from .host_model import _cli_environment
 from .website_monitor import monitor
 from .url_summarizer import summarize
 
@@ -43,9 +46,43 @@ class WorkerAlreadyRunning(RuntimeError):
 POSTGRES_WORKER_LOCK_KEY = 0x52754E4775617264
 
 
+def _worker_capabilities() -> dict[str, list[str]]:
+    """Publish only provider names that this process can invoke.
+
+    Authentication status commands never request a model response and their
+    output is discarded. No secret, account name, or filesystem path enters
+    the database heartbeat.
+    """
+    if os.environ.get("RUNGUARD_MODEL_PROVIDER", "codex").strip().lower() == "disabled":
+        return {"providers": []}
+    providers = []
+    for name, status_command in (
+        ("codex", ["codex", "login", "status"]),
+        ("claude", ["claude", "auth", "status"]),
+    ):
+        if shutil.which(name) is None:
+            continue
+        try:
+            result = subprocess.run(status_command, env=_cli_environment(),
+                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL, timeout=3, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode == 0:
+            providers.append(name)
+    configured_models = (os.environ.get("RUNGUARD_LITELLM_MODELS", "").strip()
+                         or os.environ.get("LLM_MODEL", "").strip())
+    if configured_models and any(os.environ.get(key) for key in (
+            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY",
+            "GOOGLE_API_KEY", "AZURE_API_KEY")):
+        providers.append("litellm")
+    return {"providers": providers}
+
+
 class WorkerRunner:
     def __init__(self, database_url: str | None = None,
-                 handlers: Mapping[str, Handler] | None = None):
+                 handlers: Mapping[str, Handler] | None = None,
+                 capability_reporter: Callable[[], dict[str, list[str]]] | None = None):
         self.db = UserRepository(database_url)
         self._postgres = self.db.engine.dialect.name == "postgresql"
         if self._postgres:
@@ -64,6 +101,7 @@ class WorkerRunner:
         self._lock_connection = None
         self._lock_backend_pid = None
         self._heartbeat_mutex = Lock()
+        self._capability_reporter = capability_reporter or _worker_capabilities
         self._heartbeat_stop = Event()
         self._heartbeat_thread = None
 
@@ -137,11 +175,14 @@ class WorkerRunner:
                 self._lock_connection.commit()
                 if backend_pid != self._lock_backend_pid:
                     raise RuntimeError("PostgreSQL worker advisory lock was lost")
+                capabilities = self._capability_reporter()
                 with self.db.sessions() as session:
-                    session.execute(text("INSERT INTO worker_heartbeat (id, last_seen_at) "
-                                         "VALUES (1, :seen) ON CONFLICT (id) "
-                                         "DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at"),
-                                    {"seen": now()})
+                    session.execute(text("INSERT INTO worker_heartbeat "
+                                         "(id, last_seen_at, capabilities_json) "
+                                         "VALUES (1, :seen, :capabilities) ON CONFLICT (id) "
+                                         "DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at, "
+                                         "capabilities_json = EXCLUDED.capabilities_json"),
+                                    {"seen": now(), "capabilities": json.dumps(capabilities)})
                     session.commit()
         else:
             os.utime(self.lock_path, None)

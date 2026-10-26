@@ -18,6 +18,7 @@ def upgrade() -> None:
         "worker_heartbeat",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("last_seen_at", sa.String(35), nullable=False),
+        sa.Column("capabilities_json", sa.Text(), nullable=False, server_default="{}"),
     )
 
 

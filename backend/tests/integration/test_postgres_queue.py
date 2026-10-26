@@ -1,6 +1,7 @@
 """Real PostgreSQL queue races and crash recovery, without network or model calls."""
 
 import os
+import json
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -116,7 +117,8 @@ def test_postgres_advisory_lock_claim_heartbeat_and_short_transaction(pg_url):
             return HandlerOutcome({"http_status": 200, "response_time_ms": 1,
                                    "healthy": True}, http_status=200)
 
-        with WorkerRunner(pg_url, {"website_monitor": handle}) as runner:
+        with WorkerRunner(pg_url, {"website_monitor": handle},
+                          capability_reporter=lambda: {"providers": ["codex"]}) as runner:
             with pytest.raises(WorkerAlreadyRunning):
                 with WorkerRunner(pg_url):
                     pass
@@ -130,6 +132,10 @@ def test_postgres_advisory_lock_claim_heartbeat_and_short_transaction(pg_url):
             assert runner.run_once()
             assert not runner.run_once()
         assert observed and observed[0][0] == "running" and observed[0][1]
+        with client.app.state.users.sessions() as session:
+            capabilities = session.scalar(text(
+                "SELECT capabilities_json FROM worker_heartbeat WHERE id = 1"))
+            assert json.loads(capabilities) == {"providers": ["codex"]}
         final = client.get(f"/api/v1/runs/{run_id}", headers=headers).json()
         assert final["status"] == "succeeded"
         assert len([entry for entry in client.get(
