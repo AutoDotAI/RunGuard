@@ -1,6 +1,6 @@
 # RunGuard — Product and Technical Specification
 
-**Version:** 1.1 (local authentication decision)
+**Version:** 1.2 (PostgreSQL and AI provider selection amendment)
 **Date:** 2026-10-26  
 **Status:** Approved historical scope, with the local delivery amendment below
 **Project:** AI Dev Tools Zoomcamp 2026 Final Project  
@@ -37,6 +37,103 @@
 > and [#36](https://github.com/AutoDotAI/RunGuard/issues/36). Until those
 > tasks pass independent QA, current containerized summarizer behavior still
 > needs a configured LiteLLM provider key and no CLI-powered result is claimed.
+
+> **Storage and provider-selection amendment — 2026-10-27 (new owner direction):**
+> The owner explicitly approved replacing SQLite with **PostgreSQL** and
+> adding a frontend page where an authenticated user selects a URL
+> Summarizer provider path and model. This amendment supersedes the older
+> SQLite-only, same-host SQLite, and "model selection UI out of scope"
+> statements below; those passages remain as historical MVP decisions. The
+> website has been stopped while this migration is prepared. No PostgreSQL
+> migration, restored account, or provider-selection UI may be claimed
+> complete until its own implementation and independent QA pass.
+
+### Current acceptance target for the storage change
+
+- PostgreSQL 16+ is the **default** database for API, worker, migrations,
+  alerts, incident audit, and observability queries. SQLAlchemy and Alembic
+  own its schema; a Compose `postgres` service has a health check, a private
+  persistent volume, and a loopback-only host port for an optional host
+  worker. API startup waits for a healthy database and completed migrations.
+  Database credentials stay in ignored local environment files or secret
+  storage and never enter frontend bundles or logs.
+- Use short PostgreSQL transactions for enqueue, claim, and completion.
+  Claim one queued run atomically with row locking (`FOR UPDATE SKIP LOCKED`
+  or an equivalent tested transaction); preserve the one-active-run-per-worker
+  invariant with a database index. Replace SQLite `BEGIN IMMEDIATE`, PRAGMA,
+  file-lock, `sqlite_where`, and SQLite-only metrics/query assumptions with
+  PostgreSQL behavior. The dedicated worker remains separate from FastAPI;
+  external HTTP and model calls happen outside database transactions.
+- Keep the current conservative single-worker execution limit unless a
+  separate scaling task explicitly changes it. Use a PostgreSQL advisory
+  lock or equivalent lease for exclusivity and startup reconciliation; two
+  accidental worker processes must not process the same run. Host Codex or
+  Claude CLI remains the default local model route, with server-side LiteLLM
+  and an API key as an optional route. A container must not receive a CLI
+  login directory or token. The production worker currently shares the
+  `egress_guard` network namespace: add only a narrowly scoped route to the
+  PostgreSQL service on TCP 5432 before private-CIDR denial, and prove that
+  arbitrary private destinations remain blocked. Moving the database must
+  not weaken the SSRF egress boundary.
+- Provide a **one-time, fail-closed SQLite-to-PostgreSQL importer** for the
+  existing local accounts, password hashes, workers, configuration snapshots,
+  runs, logs, alerts, and responder records. Take a consistent SQLite backup
+  before import, keep the original Docker volume untouched, import into an
+  empty migrated PostgreSQL database in foreign-key order, preserve IDs and
+  timestamps, reset sequences, and verify row counts, ownership, login, and
+  run history. Refuse a nonempty target or schema mismatch; document a
+  recovery path. Stopping the old site does not authorize deleting its data.
+- Update local Compose, CI, CD validation, backup, and rollback rehearsal to
+  use PostgreSQL. Back up PostgreSQL consistently with `pg_dump`/`pg_restore`
+  or an equivalent verified mechanism, and fail closed when an older image
+  cannot read the newer schema. Tests must run real API-to-worker journeys
+  against an isolated PostgreSQL instance, including restart persistence,
+  concurrent enqueue/claim, and two-user isolation. SQLite may remain only
+  as the read-only source for the one-time importer and isolated legacy tests.
+
+### Current acceptance target for AI configuration and workers
+
+- Add a protected frontend **AI settings page** linked from the application
+  navigation. It explains and lets the user choose the provider path:
+  `backend_cli` (Codex default or Claude) or `api` (server-side LiteLLM),
+  plus a model from a backend-owned allowlist. Show loading, unavailable,
+  validation, save-success, and error states. Never ask the browser to persist
+  a provider secret; API keys remain server-side. Add authenticated
+  `GET /api/v1/ai/providers` for a truthful capability/model catalog and
+  `GET`/`PUT /api/v1/ai/settings` for the user's choice. A disabled container
+  provider or a missing host worker/API credential must be shown as
+  unavailable rather than offered as a runnable choice. Define these routes,
+  validation errors, and schemas in `openapi.yaml` before frontend/backend
+  implementation.
+- Store the authenticated user's selection in PostgreSQL and snapshot the
+  selected provider and model when a URL Summarizer run is enqueued. Later
+  settings edits must not change a queued or historical run. Website Monitor
+  ignores model settings. Reject an unsupported provider/model or an
+  unconfigured API route clearly before execution; do not silently fall back
+  or retry. Keep one host worker connected to PostgreSQL for CLI mode without
+  exposing CLI credentials to Compose containers. The host Codex/Claude
+  adapters currently ignore the requested model; pass an allowlisted model
+  through fixed CLI arguments and test the exact invocation. Manual retry
+  keeps the failed run's original provider/model snapshot.
+- Expand behavior-focused worker tests around the two observed failures:
+  oversized/unsupported PDF input fails before any model request, while
+  readable bounded HTML reaches the selected provider; disabled/unavailable
+  provider has a distinct truthful error and no CLI/API call. Cover Codex,
+  Claude, and LiteLLM adapters with injected fakes, timeouts, output limits,
+  subprocess cleanup, malformed responses, retries, worker crash recovery,
+  and real PostgreSQL API-to-queue-to-worker-to-API journeys. The approved
+  Summarizer still handles bounded HTML only; full PDF extraction is not
+  requested in this amendment.
+
+### Zoomcamp brief and remaining external evidence
+
+The [course project brief](https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project)
+is an independent review checklist. Keep its deployment, CI/CD, telemetry,
+alert, incident response, test, documentation, and peer-review evidence
+traceable. Current local-only delivery does not prove a public deployment or
+actual-host CD/rollback; issue #34 remains deferred by the owner. Any required
+external peer reviews must be completed by real peers rather than claimed from
+agent QA, and should be tracked separately from implementation work.
 
 ---
 
