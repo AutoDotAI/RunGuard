@@ -103,12 +103,13 @@
   cutover would be lost. Once the local cutover passes, document and test
   PostgreSQL backup/restore without adding a deployment release system.
 - Keep the normal local launch to `compose.yaml` and, when observability is
-  desired, `compose.observability.yaml`. Remove or archive unused demo, CD,
-  production, host-AI, responder, and rollback-rehearsal Compose overrides
-  after confirming their needed local services and commands have been
-  incorporated in the two supported files. Retire deployment-only scripts
-  and workflows while retaining useful local migration, backup, security
-  probe, and smoke-test commands. Do not remove stored SQLite data.
+  desired, `compose.observability.yaml`. The prior cleanup already removed
+  demo, CD, responder, and rollback-rehearsal overrides; only
+  `compose.prod.yaml` and `compose.host-ai.yaml` remain to consolidate or
+  retire after their needed local services and commands are in the two
+  supported files. Retire deployment-only scripts and workflows while
+  retaining useful local migration, backup, security probe, and smoke-test
+  commands. Do not remove stored SQLite data.
 
 ### Current acceptance target for AI configuration and workers
 
