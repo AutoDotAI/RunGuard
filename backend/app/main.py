@@ -57,6 +57,7 @@ def create_app(store: PersistentStore | None = None, secret: str | None = None,
     app.state.store = store if store is not None else PersistentStore(users)
     app.state.alerts = AlertService(users)
     app.state.ai_settings = AiSettingsService(users)
+    app.state.store.ai_settings = app.state.ai_settings
     app.state.rate_limiter = RateLimiter()
     # Keep module import side-effect free; uvicorn validates the configured secret at startup.
     app.state.tokens = TokenService(secret) if secret is not None else None
