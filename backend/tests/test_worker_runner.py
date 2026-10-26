@@ -76,7 +76,7 @@ def test_stopped_worker_queued_then_committed_claim_snapshot_and_success(tmp_pat
             snapshot.config["version"] = 99
             assert snapshot.config == {}
             assert [item["event"] for item in logs(client, token, run_id)["items"]] == [
-                "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED"]
+                "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "HTTP_REQUEST_STARTED"]
             return HandlerOutcome({"http_status": 200, "response_time_ms": 1,
                                    "healthy": True}, http_status=200)
 
@@ -100,7 +100,8 @@ def test_stopped_worker_queued_then_committed_claim_snapshot_and_success(tmp_pat
         assert final["duration_ms"] >= 0
         all_logs = logs(client, token, run_id)["items"]
         assert [item["event"] for item in all_logs] == [
-            "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "RUN_SUCCEEDED"]
+            "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "HTTP_REQUEST_STARTED",
+            "HTTP_RESPONSE_RECEIVED", "RUN_SUCCEEDED"]
         assert [item["id"] for item in all_logs] == sorted({item["id"] for item in all_logs})
         assert all(datetime.fromisoformat(item["timestamp"].replace("Z", "+00:00")).tzinfo
                    == timezone.utc for item in all_logs)
@@ -145,28 +146,25 @@ def test_oldest_first_one_active_execution_and_sanitized_failure(tmp_path):
             assert session.get(RunRecord, second).retry_of_run_id is None
 
 
-def test_missing_handlers_fail_visibly_without_fabricated_result(tmp_path):
+def test_missing_summarizer_handler_fails_visibly_without_fabricated_result(tmp_path):
     path = tmp_path / "app.db"
     with setup_client(path) as client:
         token = register(client)
-        _, monitor = enqueue(client, token, "Monitor")
         _, summarizer = enqueue(client, token, "Summarizer", "url_summarizer")
         with WorkerRunner(f"sqlite:///{path}") as runner:
             assert runner.run_once()
-            assert runner.run_once()
-        for run_id in (monitor, summarizer):
-            final = run(client, token, run_id)
-            assert final["status"] == "failed"
-            assert final["result"] is None
-            assert final["error"]["code"] == "HANDLER_UNAVAILABLE"
-            assert "HANDLER_UNAVAILABLE" in [item["event"] for item in logs(client, token, run_id)["items"]]
+        final = run(client, token, summarizer)
+        assert final["status"] == "failed"
+        assert final["result"] is None
+        assert final["error"]["code"] == "HANDLER_UNAVAILABLE"
+        assert "HANDLER_UNAVAILABLE" in [item["event"] for item in logs(client, token, summarizer)["items"]]
 
 
 def test_cli_process_consumes_durable_queue_after_api_restart(tmp_path):
     path = tmp_path / "app.db"
     with setup_client(path) as client:
         token = register(client)
-        _, run_id = enqueue(client, token, "Separate process")
+        _, run_id = enqueue(client, token, "Separate process", "url_summarizer")
         assert run(client, token, run_id)["status"] == "queued"
     completed = subprocess.run(
         [sys.executable, "-m", "app.workers.runner", "--once"],

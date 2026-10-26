@@ -1,10 +1,9 @@
-"""Single-process durable queue runner; real handlers are installed separately."""
+"""Single-process durable queue runner."""
 
 import argparse
 import fcntl
 import json
 import time
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Mapping
@@ -14,25 +13,8 @@ from sqlalchemy import select, text
 from app.db import RunLogRecord, RunRecord, UserRepository
 from app.models import MonitorResult, SummarizerResult
 from app.store import now
-
-
-@dataclass(frozen=True)
-class RunSnapshot:
-    id: str
-    kind: str
-    url: str
-    config_json: str
-
-    @property
-    def config(self) -> dict:
-        """Return a fresh copy; handler edits cannot change the queued snapshot."""
-        return json.loads(self.config_json)
-
-
-@dataclass(frozen=True)
-class HandlerOutcome:
-    result: dict
-    http_status: int | None = None
+from .types import HandlerOutcome, RunSnapshot
+from .website_monitor import monitor
 
 
 Handler = Callable[[RunSnapshot], HandlerOutcome]
@@ -58,7 +40,7 @@ class WorkerRunner:
         if path == ":memory:":
             raise ValueError("Worker requires a persistent SQLite file")
         self.lock_path = Path(str(Path(path).resolve()) + ".worker.lock")
-        self.handlers = dict(handlers or {})
+        self.handlers = {"website_monitor": monitor, **(handlers or {})}
         self._lock_file = None
 
     def __enter__(self) -> "WorkerRunner":
@@ -146,9 +128,10 @@ class WorkerRunner:
             run.finished_at = finished
             run.duration_ms = _elapsed_ms(run.started_at, finished)
             if outcome is not None:
-                run.status = "succeeded"
-                run.result_json = json.dumps(outcome.result)
+                run.result_json = json.dumps(outcome.result) if outcome.result is not None else None
                 run.http_status = outcome.http_status
+            if error_code is None:
+                run.status = "succeeded"
                 self._log(session, run, finished, "INFO", "RUN_SUCCEEDED", "Run succeeded")
             else:
                 run.status = "failed"
@@ -160,6 +143,14 @@ class WorkerRunner:
             session.commit()
             return True
 
+    def _monitor_step(self, run_id: str, event: str, message: str,
+                      level: str = "INFO") -> None:
+        with self.db.sessions() as session:
+            run = session.get(RunRecord, run_id)
+            if run is not None and run.status == "running":
+                self._log(session, run, now(), level, event, message)
+                session.commit()
+
     def run_once(self) -> bool:
         snapshot = self.claim_oldest()
         if snapshot is None:
@@ -169,6 +160,8 @@ class WorkerRunner:
             self._finish(snapshot.id, None, "HANDLER_UNAVAILABLE",
                          "No handler is available for this worker type")
             return True
+        if snapshot.kind == "website_monitor":
+            self._monitor_step(snapshot.id, "HTTP_REQUEST_STARTED", "Checking configured website")
         try:
             outcome = handler(snapshot)
             if not isinstance(outcome, HandlerOutcome):
@@ -177,12 +170,24 @@ class WorkerRunner:
             json.dumps(outcome.result)
             result_type = {"website_monitor": MonitorResult,
                            "url_summarizer": SummarizerResult}[snapshot.kind]
-            result_type.model_validate(outcome.result)
+            if outcome.result is not None:
+                result_type.model_validate(outcome.result)
+            elif outcome.error_code is None:
+                raise ValueError("Successful handler outcome requires a result")
         except Exception:
             # Handler errors may contain credentials or fetched page content.
+            if snapshot.kind == "website_monitor":
+                self._monitor_step(snapshot.id, "HTTP_REQUEST_FAILED", "Website check failed", "ERROR")
             self._finish(snapshot.id, None, "HANDLER_ERROR", "Worker handler failed")
         else:
-            self._finish(snapshot.id, outcome)
+            if snapshot.kind == "website_monitor":
+                if outcome.http_status is not None:
+                    self._monitor_step(snapshot.id, "HTTP_RESPONSE_RECEIVED",
+                                       f"Received HTTP {outcome.http_status}",
+                                       "INFO" if outcome.error_code is None else "ERROR")
+                else:
+                    self._monitor_step(snapshot.id, "HTTP_REQUEST_FAILED", "Website check failed", "ERROR")
+            self._finish(snapshot.id, outcome, outcome.error_code, outcome.error_message)
         return True
 
     def poll(self, interval_seconds: float = 1.0) -> None:
