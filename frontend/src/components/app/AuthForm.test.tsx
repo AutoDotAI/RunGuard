@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -33,5 +33,31 @@ describe("auth form errors", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("already exists");
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates login fields before submitting and shows rejected credentials", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error("Invalid email or password."));
+    render(<AuthForm mode="login" onSubmit={onSubmit} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a valid email address");
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Password must be at least 8 characters");
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Incorrect123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid email or password");
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
+  });
+
+  it("reports an unavailable API without claiming signup succeeded", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error("Could not reach the RunGuard API."));
+    render(<AuthForm mode="signup" onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "person@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "CorrectHorse123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the RunGuard API");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled());
   });
 });

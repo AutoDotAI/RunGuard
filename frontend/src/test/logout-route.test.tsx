@@ -9,7 +9,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   useNavigate: () => navigate,
 }));
 
-import { Route } from "./logout";
+import { Route } from "@/routes/logout";
 
 const sessionKey = "runguard.auth.session";
 

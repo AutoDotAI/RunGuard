@@ -109,6 +109,18 @@ describe("P0 screens with the typed API adapter", () => {
     );
   });
 
+  it("shows dashboard loading and a request error without displaying counts", async () => {
+    mocks.getDashboardSummary.mockReturnValueOnce(new Promise(() => {}));
+    const view = mount(<Dashboard />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading dashboard");
+    view.unmount();
+
+    mocks.getDashboardSummary.mockRejectedValueOnce(new Error("Dashboard unavailable"));
+    mount(<Dashboard />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Dashboard unavailable");
+    expect(screen.queryByText("Recent executions")).not.toBeInTheDocument();
+  });
+
   it("hides previously loaded dashboard data when a refresh is forbidden", async () => {
     const data: DashboardSummary = {
       window: "24h", total: 9, succeeded: 9, failed: 0,
@@ -136,6 +148,40 @@ describe("P0 screens with the typed API adapter", () => {
     mocks.listWorkers.mockRejectedValueOnce(new Error("Workers unavailable"));
     mount(<Workers />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Workers unavailable");
+  });
+
+  it("shows worker loading and an active row whose Run action is disabled", async () => {
+    mocks.listWorkers.mockReturnValueOnce(new Promise(() => {}));
+    const view = mount(<Workers />);
+    expect(screen.queryByText("No workers yet.")).not.toBeInTheDocument();
+    view.unmount();
+
+    mocks.listWorkers.mockResolvedValueOnce({
+      items: [{ ...worker, last_run: { id: "run-active", status: "running", created_at: now } }],
+      total: 1, limit: 20, offset: 0,
+    });
+    mount(<Workers />);
+    expect(await screen.findByText("Docs check")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+  });
+
+  it("shows worker-detail loading, empty history, and worker API failure", async () => {
+    mocks.getWorker.mockReturnValueOnce(new Promise(() => {}));
+    mocks.listRuns.mockReturnValueOnce(new Promise(() => {}));
+    const loading = mount(<WorkerDetailView id={worker.id} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading execution history");
+    loading.unmount();
+
+    mocks.getWorker.mockResolvedValueOnce(worker);
+    mocks.listRuns.mockResolvedValueOnce({ items: [], total: 0, limit: 10, offset: 0 });
+    const empty = mount(<WorkerDetailView id={worker.id} />);
+    expect(await screen.findByText(/This worker hasn't run yet/)).toBeInTheDocument();
+    empty.unmount();
+
+    mocks.getWorker.mockRejectedValueOnce(new Error("Worker unavailable"));
+    mocks.listRuns.mockResolvedValueOnce({ items: [], total: 0, limit: 10, offset: 0 });
+    mount(<WorkerDetailView id={worker.id} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Worker unavailable");
   });
 
   it("disables Run Now for an active worker and reports a history-fetch failure", async () => {
@@ -201,6 +247,36 @@ describe("P0 screens with the typed API adapter", () => {
     expect(screen.getByText("HTTP_STATUS_ERROR")).toBeInTheDocument();
   });
 
+  it("shows ordered monitor logs and result, but no Retry for success", async () => {
+    mocks.getRun.mockResolvedValue({ ...failedRun, status: "succeeded", error: null,
+      result: { http_status: 200, response_time_ms: 42, healthy: true } });
+    mocks.getRunLogs.mockResolvedValue({
+      items: [
+        { id: 1, timestamp: "2026-01-01T00:00:00Z", level: "INFO", event: "RUN_STARTED", message: "Started" },
+        { id: 2, timestamp: "2026-01-01T00:00:01Z", level: "INFO", event: "RUN_SUCCEEDED", message: "Done" },
+      ],
+      next_after_id: 2,
+    });
+    mount(<RunDetailView id="run-1" />);
+    expect(await screen.findByText("RUN_STARTED")).toBeInTheDocument();
+    expect(screen.getByText("RUN_SUCCEEDED")).toBeInTheDocument();
+    expect(screen.getByText("Healthy")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    const events = screen.getAllByText(/RUN_(STARTED|SUCCEEDED)/).map((node) => node.textContent);
+    expect(events).toEqual(["RUN_STARTED", "RUN_SUCCEEDED"]);
+  });
+
+  it("shows a summarizer output", async () => {
+    mocks.getRun.mockResolvedValue({ ...failedRun, kind: "url_summarizer", status: "succeeded", error: null,
+      result: { source_url: worker.url, page_title: "Example", summary: "## Summary\n- One point", model: "test-model", input_was_truncated: true } });
+    mocks.getRunLogs.mockResolvedValue({ items: [], next_after_id: 0 });
+    mount(<RunDetailView id="run-1" />);
+    expect(await screen.findByText("Example")).toBeInTheDocument();
+    expect(screen.getByText("One point")).toBeInTheDocument();
+    expect(screen.getByText("model: test-model")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
   it("validates worker URLs, locks the type on edit, and shows API errors", async () => {
     const save = vi
       .fn()
@@ -221,5 +297,19 @@ describe("P0 screens with the typed API adapter", () => {
     fireEvent.change(screen.getByLabelText("URL"), { target: { value: worker.url } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Worker limit reached");
+  });
+
+  it("requires name and URL, and passes valid create data to the save callback", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    mount(<WorkerForm submitLabel="Create worker" onSubmit={save} />);
+    fireEvent.click(screen.getByRole("button", { name: "Create worker" }));
+    expect(screen.getByText("Name is required.")).toBeInTheDocument();
+    expect(screen.getByText("URL is required.")).toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New check" } });
+    fireEvent.change(screen.getByLabelText("URL"), { target: { value: "https://example.com/" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create worker" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ name: "New check", kind: "website_monitor", url: "https://example.com/" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
