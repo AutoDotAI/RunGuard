@@ -12,6 +12,9 @@ export function AlertsPanel({ data, loading, error }: {
   return (
     <section aria-labelledby="alerts-heading" className="mb-6 rounded-md border bg-card p-4">
       <h2 id="alerts-heading" className="text-sm font-semibold uppercase tracking-wide">User-impact alerts</h2>
+      {import.meta.env["VITE_DEMO_MODE"] === "true" && (
+        <p className="mt-2 text-xs font-semibold text-muted-foreground">Local demo · injected worker pause</p>
+      )}
       {loading && <p role="status" className="mt-2 text-sm text-muted-foreground">Loading alerts…</p>}
       {error && <p role="alert" className="mt-2 text-sm text-destructive">Alerts unavailable. Try refreshing the page.</p>}
       {!loading && !error && open.length === 0 && <p className="mt-2 text-sm text-muted-foreground">No open alerts.</p>}

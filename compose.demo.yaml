@@ -1,0 +1,19 @@
+# Explicitly local, isolated pause rehearsal. Use only with -p rg-demo-<unique>.
+services:
+  api:
+    environment:
+      RUNGUARD_ALLOWED_HOSTS: example.com
+
+  worker:
+    command: ["python", "-m", "app.demo_worker", "serve"]
+    environment:
+      RUNGUARD_DEMO_MODE: ${RUNGUARD_DEMO_MODE:?Set true only for a local demo}
+      RUNGUARD_DEMO_PROJECT: ${RUNGUARD_DEMO_PROJECT:?Set the isolated rg-demo-* project}
+      RUNGUARD_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:?Select the isolated project with -p}
+      RUNGUARD_ALLOWED_HOSTS: example.com
+
+  web:
+    build:
+      args:
+        VITE_DEMO_MODE: "true"
+        VITE_ALLOWED_HOSTS: example.com

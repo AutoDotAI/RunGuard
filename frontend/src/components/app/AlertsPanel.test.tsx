@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import type { Alert } from "@/lib/api/types";
 
@@ -18,6 +18,16 @@ const open: Alert = {
 };
 
 describe("user-impact alerts panel", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("marks only the explicit local demo build as an injected drill", () => {
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+    const { rerender } = render(<AlertsPanel data={{ items: [], total: 0 }} loading={false} />);
+    expect(screen.queryByText(/Local demo · injected worker pause/)).not.toBeInTheDocument();
+    vi.stubEnv("VITE_DEMO_MODE", "true");
+    rerender(<AlertsPanel data={{ items: [], total: 0 }} loading={false} />);
+    expect(screen.getByText("Local demo · injected worker pause")).toBeInTheDocument();
+  });
   it("shows loading, empty, and API error separately", () => {
     const { rerender } = render(<AlertsPanel data={undefined} loading error={null} />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading alerts");

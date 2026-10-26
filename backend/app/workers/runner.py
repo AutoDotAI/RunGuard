@@ -119,13 +119,16 @@ class WorkerRunner:
                 observability.emit("WORKER_RECONCILED", service="runguard-worker")
             return len(runs)
 
-    def claim_oldest(self) -> RunSnapshot | None:
+    def claim_oldest(self, allowed_run_id: str | None = None) -> RunSnapshot | None:
         self._require_lock()
         self._touch_heartbeat()
         with self.db.sessions() as session:
             session.execute(text("BEGIN IMMEDIATE"))
             # A write lock protects both the select and state change from other writers.
-            run = session.scalar(select(RunRecord).where(RunRecord.status == "queued")
+            conditions = [RunRecord.status == "queued"]
+            if allowed_run_id is not None:
+                conditions.append(RunRecord.id == allowed_run_id)
+            run = session.scalar(select(RunRecord).where(*conditions)
                                  .order_by(RunRecord.created_at, RunRecord.id).limit(1))
             if run is None:
                 session.commit()

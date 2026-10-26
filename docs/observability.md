@@ -36,6 +36,49 @@ Normal 4xx/5xx responses from a configured monitor target count as job failures,
 while the stalled alert identifies worker health. They are not labelled a
 RunGuard platform outage.
 
+### Controlled local stalled-worker drill
+
+Issue #28 adds an offline rehearsal for the second alert rule. It runs only in
+an isolated `rg-demo-*` Compose project with `RUNGUARD_DEMO_MODE=true`. The
+ordinary Compose worker never imports the demo control, and no HTTP control
+route exists. The demo worker accepts only its bound fixture run and returns
+an injected HTTP 200 response; it never contacts the configured target or a
+model provider. The API and worker allow only `example.com` worker URLs in this
+override. Use a new Compose project and volume; the pause command refuses to
+start while any queued or running jobs already exist there.
+
+Prepare a local `.env` with `RUNGUARD_AUTH_SECRET` of at least 32 bytes, then
+run from the repository root:
+
+```bash
+export RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT=rg-demo-stall-1
+docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml --profile observability up --build -d
+python3 scripts/demo_stall_smoke.py
+docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml -f compose.demo.yaml --profile observability down
+```
+
+The script registers two fresh local accounts through the real API. It pauses
+the demo worker, enqueues one fixture run, then waits for queue age to exceed
+60 seconds and heartbeat age to exceed 15 seconds. It verifies the owned app
+alert, timestamped `DEMO_WORKER_PAUSED` log, fixed-label queue/heartbeat
+metrics, firing operator inbox notification, and denied access from the second
+account. It resumes only the bound run, verifies completion, the same alert's
+resolution, a resolved inbox event, and a cross-process trace. Output contains
+only local demo IDs and timestamps. The script always calls cleanup, including
+after a failed assertion; cleanup releases a bound pause for processing. It
+does not delete the SQLite volume. For a disposable demo volume only, run
+`docker compose ... down -v` after reviewing that project's name and data.
+Alertmanager may delay the resolved inbox entry by about 30 seconds.
+
+For a manual rehearsal, use the same Compose prefix and run
+`docker compose ... exec -T worker python -m app.demo_worker pause`, then
+`bind RUN_ID`, `resume`, and `cleanup`. A bound fixture ID is required before
+resume. `cleanup` is idempotent. A normal or public Compose service has no
+demo mode and rejects these commands; even in demo mode, any unrelated active
+job blocks pause, bind, or resume. The demo dashboard explicitly says
+**Local demo · injected worker pause**. This is not a production worker
+control or a responder agent.
+
 The API exports `runguard_alerts_open{kind}` with only two fixed kind values.
 It sends one aggregate firing or resolved state per kind to the local
 Alertmanager, which groups and repeats notifications. Alertmanager's UI is

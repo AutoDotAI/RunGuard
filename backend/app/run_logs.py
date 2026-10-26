@@ -30,6 +30,8 @@ MESSAGES = {
     "RUN_SUCCEEDED": "Run succeeded",
     "RUN_FAILED": "Run failed",
     "WORKER_INTERRUPTED": "Worker stopped before the run completed",
+    "DEMO_WORKER_PAUSED": "Local demo worker paused; queued run is waiting",
+    "DEMO_WORKER_RESUMED": "Local demo worker resumed for this run",
     "HANDLER_UNAVAILABLE": "No handler is available for this worker type",
     "HANDLER_ERROR": "Worker handler failed",
     "URL_INVALID": "A valid public HTTP(S) URL is required",
