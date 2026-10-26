@@ -42,8 +42,8 @@ nested `.git` is present; it may stage a gitlink instead of the source. Review
 hash in this document, and commit the snapshot to RunGuard. Never force push,
 rebase, amend, or squash published Lovable commits.
 
-Run the frontend from `frontend/` with `npm install --no-package-lock`,
+Run the frontend from `frontend/` with `npm ci --no-audit --no-fund`,
 `npm run build`, `npm test`, and `npm run dev`. Run the API from `backend/`
-with `uv sync --extra test`, `uv run pytest -q`, and
+with `uv sync --locked --extra test`, `uv run pytest -q`, and
 `uv run uvicorn app.main:app --host 127.0.0.1 --port 8000`. The API stores
 accounts, workers, runs, and logs in SQLite; the frontend uses its HTTP API.
