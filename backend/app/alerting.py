@@ -1,4 +1,4 @@
-"""Evaluate durable, owner-scoped user-impact alerts from SQLite run state."""
+"""Evaluate durable, owner-scoped user-impact alerts from database run state."""
 
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
@@ -7,9 +7,11 @@ from threading import Event, Thread
 from typing import Callable
 from uuid import uuid4
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 
 from .db import AlertRecord, RunRecord, UserRepository
+from .db_serialization import serialize
+from .worker_health import heartbeat_age
 from .models import Alert, AlertPage
 from . import observability
 
@@ -56,11 +58,8 @@ class AlertService:
             return AlertPage(items=[self._public(session, row) for row in rows], total=len(rows))
 
     def _heartbeat_unhealthy(self, current: datetime) -> bool:
-        try:
-            modified = datetime.fromtimestamp(self.heartbeat_path.stat().st_mtime, timezone.utc)
-        except OSError:
-            return True
-        return current - modified > HEARTBEAT_LIMIT
+        age = heartbeat_age(self.users, current=current, sqlite_path=self.heartbeat_path)
+        return age is None or age > HEARTBEAT_LIMIT.total_seconds()
 
     def evaluate(self, current: datetime | None = None) -> dict[str, int]:
         """Reconcile open alerts atomically; return aggregate open counts by fixed kind."""
@@ -68,11 +67,19 @@ class AlertService:
         active: dict[str, tuple[str, str, str, str, str, str]] = {}
         unhealthy = self._heartbeat_unhealthy(current)
         with self.users.sessions() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
-            failures = session.scalars(select(RunRecord).where(
-                RunRecord.status == "failed", RunRecord.finished_at.is_not(None))).all()
-            successes = session.scalars(select(RunRecord).where(
-                RunRecord.status == "succeeded", RunRecord.finished_at.is_not(None))).all()
+            serialize(session, postgres=self.users.engine.dialect.name == "postgresql",
+                      key=0x5247414C455254)
+            # Read only the active rule window. Leave one second of padding for
+            # timestamps whose ISO representations differ in fractional precision;
+            # exact boundary checks below still use parsed UTC datetimes.
+            floor = stamp(current - FAILURE_WINDOW - timedelta(seconds=1))
+            ceiling = stamp(current + timedelta(seconds=1))
+            recent_rows = session.scalars(select(RunRecord).where(
+                RunRecord.status.in_(("failed", "succeeded")),
+                RunRecord.finished_at >= floor, RunRecord.finished_at <= ceiling)
+                .order_by(RunRecord.finished_at.desc()).limit(10000)).all()
+            failures = [run for run in recent_rows if run.status == "failed"]
+            successes = [run for run in recent_rows if run.status == "succeeded"]
             last_success: dict[str, datetime] = {}
             for run in successes:
                 finished = utc(run.finished_at)
@@ -95,7 +102,10 @@ class AlertService:
                     active[fp] = (owner, KINDS[0], "warning", "Repeated job failures",
                                   latest.id, "At least two jobs failed in five minutes; inspect the linked run.")
             if unhealthy:
-                queued = session.scalars(select(RunRecord).where(RunRecord.status == "queued")).all()
+                queued = session.scalars(select(RunRecord).where(
+                    RunRecord.status == "queued",
+                    RunRecord.created_at <= stamp(current - QUEUE_LIMIT + timedelta(seconds=1)))
+                    .order_by(RunRecord.created_at).limit(10000)).all()
                 for run in queued:
                     if current - utc(run.created_at) > QUEUE_LIMIT:
                         fp = fingerprint(run.owner_user_id, KINDS[1], run.id)
@@ -103,7 +113,8 @@ class AlertService:
                                       "Worker queue stalled", run.id,
                                       "Run remained queued while the worker heartbeat was unhealthy.")
 
-            existing = session.scalars(select(AlertRecord).where(AlertRecord.status == "open")).all()
+            existing = session.scalars(select(AlertRecord).where(AlertRecord.status == "open")
+                                       .limit(10000)).all()
             open_by_fingerprint = {row.fingerprint: row for row in existing}
             for fp, (owner, kind, severity, title, run_id, symptom) in active.items():
                 if fp not in open_by_fingerprint:

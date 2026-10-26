@@ -7,15 +7,15 @@ Untrusted run text is never used to select a tool or authorize an action.
 import argparse
 import json
 import time
-from datetime import datetime, timezone
-from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 
 from .alerting import AlertService
 from .db import (AlertRecord, IncidentRecord, ResponderActionRecord,
                  RunLogRecord, RunRecord, UserRepository)
+from .db_serialization import serialize
+from .worker_health import heartbeat_age
 from .demo_worker import DemoControl, DemoDenied, require_demo_mode
 from .run_logs import MESSAGES
 from .store import now
@@ -34,12 +34,7 @@ class Responder:
         self.clock = clock
 
     def get_worker_health(self) -> dict:
-        path = Path(str(Path(self.users.database_url.removeprefix("sqlite:///"))
-                        .resolve()) + ".worker.lock")
-        try:
-            age = max(0.0, datetime.now(timezone.utc).timestamp() - path.stat().st_mtime)
-        except OSError:
-            age = None
+        age = heartbeat_age(self.users)
         return {"healthy": age is not None and age <= 15, "heartbeat_age_seconds": age}
 
     @staticmethod
@@ -98,7 +93,8 @@ class Responder:
     def respond(self, alert_id: str, owner_id: str) -> dict | None:
         """One incident per owned open alert; reserve an action before invoking it."""
         with self.users.sessions() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
+            serialize(session, postgres=self.users.engine.dialect.name == "postgresql",
+                      key=0x5247524553504F4E)
             alert = session.scalar(select(AlertRecord).where(
                 AlertRecord.id == alert_id, AlertRecord.owner_user_id == owner_id))
             if alert is None:
@@ -227,7 +223,8 @@ class Responder:
     def _record_outcome(self, incident_id: str, audit_id: str, decision: str,
                         reason: str, result: str, after_status: str | None = None) -> None:
         with self.users.sessions() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
+            serialize(session, postgres=self.users.engine.dialect.name == "postgresql",
+                      key=0x5247524553504F4E)
             incident = session.get(IncidentRecord, incident_id)
             audit = session.get(ResponderActionRecord, audit_id)
             incident.status = "recovered" if result == "recovered" else "needs_review"
@@ -241,7 +238,7 @@ class Responder:
         """Scan only persisted open alerts; no alert means no incident or action."""
         with self.users.sessions() as session:
             pending = session.execute(select(AlertRecord.id, AlertRecord.owner_user_id).where(
-                AlertRecord.status == "open")).all()
+                AlertRecord.status == "open").limit(1000)).all()
         return [result for alert_id, owner in pending
                 if (result := self.respond(alert_id, owner)) is not None]
 

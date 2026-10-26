@@ -8,13 +8,17 @@ import json
 import logging
 import os
 import re
-import sqlite3
 import sys
 import time
 from contextvars import ContextVar
+from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.pool import NullPool
 
 from opentelemetry import metrics, trace
 from opentelemetry.metrics import Observation
@@ -76,51 +80,74 @@ def _db_path(database_url: str | None) -> Path | None:
     return None if path == ":memory:" else Path(path)
 
 
-def _queue_depth(options):
-    path = _db_path(_runtime["database_url"] if _runtime else None)
-    if path is None or not path.exists():
+@lru_cache(maxsize=8)
+def _metric_engine(database_url: str):
+    postgres = database_url.startswith("postgresql")
+    return create_engine(database_url, poolclass=NullPool,
+                         connect_args={"connect_timeout": 1} if postgres else {"timeout": 1.0})
+
+
+def _metric_rows(options, statement: str, params: dict | None = None):
+    database_url = _runtime.get("database_url") if _runtime else None
+    if not database_url:
+        return []
+    path = _db_path(database_url)
+    if path is not None and not path.exists():
         return []
     try:
-        with sqlite3.connect(path, timeout=min(options.timeout_millis / 1000, 1)) as connection:
-            rows = connection.execute(
-                "SELECT kind, COUNT(*) FROM runs WHERE status = 'queued' GROUP BY kind"
-            ).fetchall()
-    except (sqlite3.Error, OSError):
+        with _metric_engine(database_url).connect() as connection:
+            if connection.dialect.name == "postgresql":
+                timeout = max(1, min(int(options.timeout_millis), 1000))
+                connection.execute(text("SELECT set_config('statement_timeout', :timeout, true)"),
+                                   {"timeout": f"{timeout}ms"})
+            return connection.execute(text(statement), params or {}).all()
+    except (SQLAlchemyError, OSError, ValueError):
         return []
+
+
+def _queue_depth(options):
+    rows = _metric_rows(options, "SELECT kind, COUNT(*) FROM runs "
+                        "WHERE status = 'queued' AND kind IN ('website_monitor', 'url_summarizer') "
+                        "GROUP BY kind LIMIT 2")
     counts = dict(rows)
     return [Observation(counts.get(kind, 0), {"kind": kind}) for kind in sorted(_run_kind)]
 
 
-def _heartbeat_age(_options):
-    path = _db_path(_runtime["database_url"] if _runtime else None)
-    if path is None:
+def _heartbeat_age(options):
+    database_url = _runtime.get("database_url") if _runtime else None
+    if not database_url:
         return []
-    try:
-        age = max(0.0, time.time() - Path(f"{path.resolve()}.worker.lock").stat().st_mtime)
-    except OSError:
-        return []
+    if database_url.startswith("postgresql"):
+        rows = _metric_rows(options, "SELECT last_seen_at FROM worker_heartbeat WHERE id = 1")
+        if not rows:
+            return []
+        try:
+            seen = datetime.fromisoformat(rows[0][0].replace("Z", "+00:00"))
+            age = max(0.0, (datetime.now(timezone.utc) - seen).total_seconds())
+        except (TypeError, ValueError):
+            return []
+    else:
+        path = _db_path(database_url)
+        if path is None:
+            return []
+        try:
+            age = max(0.0, time.time() - Path(f"{path.resolve()}.worker.lock").stat().st_mtime)
+        except OSError:
+            return []
     return [Observation(age)]
 
 
 def _open_alerts(options):
-    path = _db_path(_runtime["database_url"] if _runtime else None)
-    if path is None or not path.exists():
-        return []
-    try:
-        with sqlite3.connect(path, timeout=min(options.timeout_millis / 1000, 1)) as connection:
-            rows = connection.execute(
-                "SELECT kind, COUNT(*) FROM alerts WHERE status = 'open' GROUP BY kind"
-            ).fetchall()
-    except (sqlite3.Error, OSError):
-        return []
+    rows = _metric_rows(options, "SELECT kind, COUNT(*) FROM alerts "
+                        "WHERE status = 'open' AND kind IN ('repeated_run_failure', 'worker_queue_stalled') "
+                        "GROUP BY kind LIMIT 2")
     counts = dict(rows)
     return [Observation(counts.get(kind, 0), {"kind": kind})
             for kind in ("repeated_run_failure", "worker_queue_stalled")]
 
 
 def _service_resource(service: str) -> Resource:
-    # API and worker each have one process on the shared SQLite host. Keep
-    # Prometheus resource labels stable when either process restarts.
+    # Keep Prometheus resource labels stable when either process restarts.
     return Resource.create({"service.name": service, "service.instance.id": service})
 
 
