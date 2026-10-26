@@ -150,6 +150,16 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-images
+      - name: Validate published digest artifact before host access
+        env:
+          API_DIGEST: ${{ needs.publish.outputs.api }}
+          WEB_DIGEST: ${{ needs.publish.outputs.web }}
+          EGRESS_DIGEST: ${{ needs.publish.outputs.egress }}
+        run: |
+          python3 deploy/release.py --commit "$GITHUB_SHA" --api "$API_DIGEST" --web "$WEB_DIGEST" --egress "$EGRESS_DIGEST" --published-artifact release-images.json >/dev/null
       - name: Deploy and run authenticated smoke
         env:
           API_DIGEST: ${{ needs.publish.outputs.api }}

@@ -49,6 +49,20 @@ class ReleaseValidationTests(unittest.TestCase):
             evidence.write_text(json.dumps(record))
             self.assertEqual(invoke("--source-run-id", "123", "--evidence", str(evidence)).returncode, 2)
 
+    def test_development_must_match_published_artifact(self):
+        with tempfile.TemporaryDirectory() as folder:
+            artifact = Path(folder) / "release-images.json"
+            artifact.write_text(json.dumps({"commit": SHA, **DIGESTS}))
+            self.assertEqual(invoke("--published-artifact", str(artifact)).returncode, 0)
+            artifact.write_text(json.dumps({"commit": SHA, **DIGESTS, "web": "sha256:" + "4" * 64}))
+            result = invoke("--published-artifact", str(artifact))
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("published image artifact differs", result.stderr)
+            artifact.write_text(json.dumps({"commit": "b" * 40, **DIGESTS}))
+            self.assertEqual(invoke("--published-artifact", str(artifact)).returncode, 2)
+            artifact.unlink()
+            self.assertEqual(invoke("--published-artifact", str(artifact)).returncode, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

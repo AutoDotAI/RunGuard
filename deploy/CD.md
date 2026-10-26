@@ -4,6 +4,9 @@
 three images to GHCR: API/worker, web, and the worker egress guard. Each image
 has a `sha-<commit>` tag and an OCI revision label. The workflow records the
 registry's immutable `sha256` digests in the `release-images` Actions artifact.
+Before development SSH access, the deployment job downloads that artifact from
+the same run and verifies its commit and all three digests against the publish
+job outputs. Missing or mismatched evidence stops deployment.
 Pull requests run CI but cannot publish or deploy. The web build embeds the
 repository variable `CD_ALLOWED_HOSTS` (default `example.com`); use the same
 allowed public hosts in development and production when promoting one digest.
@@ -92,9 +95,12 @@ cd ../frontend && npm test && npx tsc --noEmit && npm run build
 The CD check parses both workflow YAML files with a pinned PyYAML dependency,
 rejects duplicate keys and malformed job structure, and proves malformed
 manual promotion YAML and missing SSH secrets fail closed. It also tests digest
-and evidence validation, shell syntax, and a merged Compose configuration with
-no build contexts. It uses placeholder digests and temporary local files; it
-does not pull, publish, open ports, or deploy. A
+and evidence validation, including development artifact consumption, shell
+syntax, and a merged Compose configuration with no build contexts. A fake
+Docker command and fake authenticated smoke exercise failed migration/health
+and failed-smoke reporting without a host or network access. These checks use
+placeholder digests and temporary local files; they do not pull, publish,
+open ports, or deploy. A
 live GitHub Actions run is also needed to verify registry permission and
 workflow behavior. External host QA remains pending until host/domain access
 is supplied.

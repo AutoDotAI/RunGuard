@@ -40,6 +40,11 @@ def check_promotion(evidence: dict, source_run_id: str, requested: dict[str, str
             raise ValueError(f"{field} differs from successful development deployment")
 
 
+def check_published_artifact(artifact: dict, requested: dict[str, str]) -> None:
+    if artifact != requested:
+        raise ValueError("published image artifact differs from requested release")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--commit", required=True)
@@ -48,9 +53,14 @@ def main() -> int:
     parser.add_argument("--egress", required=True)
     parser.add_argument("--source-run-id")
     parser.add_argument("--evidence", type=Path)
+    parser.add_argument("--published-artifact", type=Path)
     args = parser.parse_args()
     try:
         data = release(args.commit, args.api, args.web, args.egress)
+        if args.published_artifact:
+            if args.evidence or args.source_run_id:
+                raise ValueError("published artifact and promotion evidence are exclusive")
+            check_published_artifact(json.loads(args.published_artifact.read_text()), data)
         if args.evidence:
             if not args.source_run_id:
                 raise ValueError("source run id is required for promotion")
