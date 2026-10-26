@@ -65,6 +65,9 @@ def test_postgres_settings_survive_restart_with_owner_isolation(postgres_url, mo
 
     restarted = create_app(secret=SECRET, database_url=postgres_url)
     with TestClient(restarted) as client:
+        with restarted.state.users.engine.begin() as connection:
+            connection.execute(text("UPDATE worker_heartbeat SET last_seen_at = :seen WHERE id = 1"),
+                               {"seen": datetime.now(timezone.utc).isoformat()})
         login = client.post("/api/v1/auth/login", json={"email": "first@example.com",
                                                          "password": "password123"})
         assert login.status_code == 200
