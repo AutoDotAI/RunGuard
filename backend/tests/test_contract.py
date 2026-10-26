@@ -51,6 +51,19 @@ def contract():
     return document
 
 
+def test_log_cursor_and_row_fields_match_pydantic_contract():
+    from app.models import RunLog, RunLogPage
+
+    document = contract()
+    row = document["components"]["schemas"]["RunLog"]
+    page = document["components"]["schemas"]["RunLogPage"]
+    assert set(row["required"]) == set(RunLog.model_fields)
+    assert set(page["required"]) == set(RunLogPage.model_fields)
+    assert row["properties"]["message"]["maxLength"] == (
+        RunLog.model_fields["message"].metadata[0].max_length) == 512
+    assert page["properties"]["next_after_id"] == {"type": "integer", "minimum": 0}
+
+
 def resolve(document, node):
     while isinstance(node, dict) and "$ref" in node:
         ref = node["$ref"]

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .db import RunLogRecord, RunRecord, UserRepository, WorkerRecord
+from .run_logs import new_run_log
 from .models import (
     DashboardSummary, EnqueuedRun, Run, RunLog, RunLogPage, RunPage,
     Worker, WorkerCreate, WorkerPage, WorkerUpdate,
@@ -171,9 +172,7 @@ class PersistentStore:
         try:
             session.add(run)
             session.flush()  # Insert the parent before its foreign-keyed log entry.
-            session.add(RunLogRecord(run_id=run.id, owner_user_id=owner,
-                                     timestamp=timestamp, level="INFO", event="RUN_QUEUED",
-                                     message="Run queued for execution"))
+            session.add(new_run_log(run.id, owner, timestamp, "INFO", "RUN_QUEUED"))
             session.commit()
         except IntegrityError:
             session.rollback()

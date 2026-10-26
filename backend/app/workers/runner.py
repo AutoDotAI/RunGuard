@@ -10,8 +10,9 @@ from typing import Callable, Mapping
 
 from sqlalchemy import select, text
 
-from app.db import RunLogRecord, RunRecord, UserRepository
+from app.db import RunRecord, UserRepository
 from app.models import MonitorResult, SummarizerResult
+from app.run_logs import new_run_log, safe_event
 from app.store import now
 from .types import HandlerOutcome, RunSnapshot
 from .website_monitor import monitor
@@ -80,9 +81,8 @@ class WorkerRunner:
     @staticmethod
     def _log(session, run: RunRecord, timestamp: str, level: str,
              event: str, message: str) -> None:
-        session.add(RunLogRecord(run_id=run.id, owner_user_id=run.owner_user_id,
-                                 timestamp=timestamp, level=level, event=event,
-                                 message=message))
+        session.add(new_run_log(run.id, run.owner_user_id, timestamp,
+                                level, event, message))
 
     def reconcile_interrupted(self) -> int:
         self._require_lock()
@@ -137,13 +137,13 @@ class WorkerRunner:
                 run.http_status = outcome.http_status
             if error_code is None:
                 run.status = "succeeded"
+                if run.kind == "url_summarizer":
+                    self._log(session, run, finished, "INFO", "SUMMARY_SAVED", "")
                 self._log(session, run, finished, "INFO", "RUN_SUCCEEDED", "Run succeeded")
             else:
                 run.status = "failed"
-                run.error_code = error_code
-                run.error_message = error_message
-                self._log(session, run, finished, "ERROR", error_code or "RUN_FAILED",
-                          error_message or "Run failed")
+                run.error_code, run.error_message = safe_event(error_code, error_message or "")
+                self._log(session, run, finished, "ERROR", run.error_code, run.error_message)
                 self._log(session, run, finished, "ERROR", "RUN_FAILED", "Run failed")
             session.commit()
             return True
@@ -166,6 +166,7 @@ class WorkerRunner:
                          "No handler is available for this worker type")
             return True
         if snapshot.kind == "website_monitor":
+            self._monitor_step(snapshot.id, "URL_VALIDATION_STARTED", "")
             self._monitor_step(snapshot.id, "HTTP_REQUEST_STARTED", "Checking configured website")
         try:
             outcome = handler(snapshot)

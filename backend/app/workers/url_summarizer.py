@@ -72,6 +72,7 @@ def summarize(snapshot: RunSnapshot, *,
               model: str | None = None,
               log: Callable[[str, str, str], None] | None = None) -> HandlerOutcome:
     emit = log or (lambda _event, _message, _level: None)
+    emit("URL_VALIDATION_STARTED", "Validating configured URL", "INFO")
     emit("HTTP_REQUEST_STARTED", "Fetching HTML page", "INFO")
     try:
         response = (fetch or outbound.fetch)(snapshot.url)
@@ -83,18 +84,22 @@ def summarize(snapshot: RunSnapshot, *,
         return HandlerOutcome(None, error_code="FETCH_ERROR",
                               error_message="Destination request failed")
 
-    emit("HTTP_RESPONSE_RECEIVED", f"Received HTTP {response.status}", "INFO")
+    emit("HTTP_RESPONSE_RECEIVED", f"Received HTTP {response.status}",
+         "INFO" if 200 <= response.status < 300 else "ERROR")
     if not 200 <= response.status < 300:
         return HandlerOutcome(None, http_status=response.status,
                               error_code="HTTP_STATUS_ERROR",
                               error_message=f"Received HTTP {response.status}")
+    emit("TEXT_EXTRACTION_STARTED", "Extracting readable page text", "INFO")
     if len(response.body) > outbound.MAX_BODY_BYTES:
+        emit("TEXT_EXTRACTION_FAILED", "Readable page text could not be extracted", "ERROR")
         return HandlerOutcome(None, http_status=response.status,
                               error_code="RESPONSE_TOO_LARGE",
                               error_message="Response exceeds size limit")
     content_type = next((v for k, v in response.headers.items() if k.lower() == "content-type"), "")
     parts = [piece.strip() for piece in content_type.split(";")]
     if parts[0].lower() != "text/html":
+        emit("TEXT_EXTRACTION_FAILED", "Readable page text could not be extracted", "ERROR")
         return HandlerOutcome(None, http_status=response.status,
                               error_code="UNSUPPORTED_CONTENT_TYPE",
                               error_message="HTML content is required")
@@ -105,14 +110,22 @@ def summarize(snapshot: RunSnapshot, *,
     try:
         html = response.body.decode(charset, errors="replace")
     except LookupError:
+        emit("TEXT_EXTRACTION_FAILED", "Readable page text could not be extracted", "ERROR")
         return HandlerOutcome(None, http_status=response.status,
                               error_code="UNSUPPORTED_CHARSET",
                               error_message="Page character encoding is unsupported")
     parser = _VisibleHTML()
-    parser.feed(html)
+    try:
+        parser.feed(html)
+    except Exception:
+        emit("TEXT_EXTRACTION_FAILED", "Readable page text could not be extracted", "ERROR")
+        return HandlerOutcome(None, http_status=response.status,
+                              error_code="EXTRACTION_ERROR",
+                              error_message="Readable page text could not be extracted")
     page_text = _clean("".join(parser.parts))
     title = _clean("".join(parser.title_parts)) or None
     if len(page_text) < MIN_READABLE_CHARS:
+        emit("TEXT_EXTRACTION_FAILED", "Readable page text could not be extracted", "ERROR")
         return HandlerOutcome(None, http_status=response.status,
                               error_code="INSUFFICIENT_CONTENT",
                               error_message="Page has insufficient readable text")

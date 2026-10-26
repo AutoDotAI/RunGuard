@@ -76,7 +76,8 @@ def test_stopped_worker_queued_then_committed_claim_snapshot_and_success(tmp_pat
             snapshot.config["version"] = 99
             assert snapshot.config == {}
             assert [item["event"] for item in logs(client, token, run_id)["items"]] == [
-                "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "HTTP_REQUEST_STARTED"]
+                "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "URL_VALIDATION_STARTED",
+                "HTTP_REQUEST_STARTED"]
             return HandlerOutcome({"http_status": 200, "response_time_ms": 1,
                                    "healthy": True}, http_status=200)
 
@@ -100,7 +101,8 @@ def test_stopped_worker_queued_then_committed_claim_snapshot_and_success(tmp_pat
         assert final["duration_ms"] >= 0
         all_logs = logs(client, token, run_id)["items"]
         assert [item["event"] for item in all_logs] == [
-            "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "HTTP_REQUEST_STARTED",
+            "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "URL_VALIDATION_STARTED",
+            "HTTP_REQUEST_STARTED",
             "HTTP_RESPONSE_RECEIVED", "RUN_SUCCEEDED"]
         assert [item["id"] for item in all_logs] == sorted({item["id"] for item in all_logs})
         assert all(datetime.fromisoformat(item["timestamp"].replace("Z", "+00:00")).tzinfo

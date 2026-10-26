@@ -605,7 +605,7 @@ components:
         timestamp: { type: string, format: date-time }
         level: { $ref: '#/components/schemas/LogLevel' }
         event: { type: string }
-        message: { type: string }
+        message: { type: string, maxLength: 512 }
     RunLogPage:
       type: object
       additionalProperties: false

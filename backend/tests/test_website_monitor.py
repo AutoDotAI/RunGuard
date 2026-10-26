@@ -73,7 +73,8 @@ def test_http_status_and_snapshot_through_api_worker_api(tmp_path, monkeypatch, 
         assert log_response.status_code == 200
         logs = log_response.json()["items"]
         assert [item["event"] for item in logs] == [
-            "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "HTTP_REQUEST_STARTED",
+            "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "URL_VALIDATION_STARTED",
+            "HTTP_REQUEST_STARTED",
             "HTTP_RESPONSE_RECEIVED", "RUN_SUCCEEDED" if healthy else "HTTP_STATUS_ERROR",
             *([] if healthy else ["RUN_FAILED"])]
         assert [item["id"] for item in logs] == sorted(item["id"] for item in logs)
@@ -115,6 +116,7 @@ def test_outbound_failures_remain_sanitized_and_have_no_result(tmp_path, code, m
             assert session.get(RunRecord, run_id).http_status is None
         logs = client.get(f"/api/v1/runs/{run_id}/logs", headers=headers).json()["items"]
         assert [item["event"] for item in logs] == [
-            "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "HTTP_REQUEST_STARTED",
+            "RUN_QUEUED", "RUN_CLAIMED", "RUN_STARTED", "URL_VALIDATION_STARTED",
+            "HTTP_REQUEST_STARTED",
             "HTTP_REQUEST_FAILED", code, "RUN_FAILED"]
         assert "private-secret" not in json.dumps(logs)

@@ -148,7 +148,7 @@ class RunLog(StrictModel):
     timestamp: str
     level: LogLevel
     event: str
-    message: str
+    message: str = Field(max_length=512)
 
 
 class RunLogPage(StrictModel):
