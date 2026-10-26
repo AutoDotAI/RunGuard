@@ -51,6 +51,9 @@ def test_invalid_or_overlimit_url_never_resolves(url):
     (["127.0.0.1"], "DESTINATION_BLOCKED"),
     (["::1"], "DESTINATION_BLOCKED"),
     (["8.8.8.8", "fd00::1"], "DESTINATION_BLOCKED"),
+    (["203.0.113.1"], "DESTINATION_BLOCKED"),
+    (["240.0.0.1"], "DESTINATION_BLOCKED"),
+    (["8.8.8.8", "203.0.113.1"], "DESTINATION_BLOCKED"),
     ([], "DNS_ERROR"),
 ])
 def test_every_dns_answer_is_checked_before_transport(answers, code):
