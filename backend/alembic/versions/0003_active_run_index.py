@@ -1,4 +1,4 @@
-"""Enforce one queued or running run per worker in SQLite.
+"""Enforce one queued or running run per worker.
 
 Revision ID: 0003_active_run_index
 Revises: 0002_app_data
@@ -17,6 +17,7 @@ def upgrade() -> None:
     op.create_index(
         "uq_runs_one_active_per_worker", "runs", ["worker_id"], unique=True,
         sqlite_where=sa.text("status IN ('queued', 'running')"),
+        postgresql_where=sa.text("status IN ('queued', 'running')"),
     )
 
 
