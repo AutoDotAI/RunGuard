@@ -1,4 +1,4 @@
-"""SQLite account persistence; worker and run tables follow in Issue #6."""
+"""SQLite models, connections, and migrations for RunGuard."""
 
 import os
 from pathlib import Path
@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import String, create_engine, select
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, create_engine, event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -24,6 +24,69 @@ class UserRecord(Base):
     created_at: Mapped[str] = mapped_column(String(35), nullable=False)
 
 
+class WorkerRecord(Base):
+    __tablename__ = "workers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    config_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(String(35), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(35), nullable=False)
+    archived_at: Mapped[str | None] = mapped_column(String(35), nullable=True)
+
+    __table_args__ = (Index("ix_workers_owner_archived", "owner_user_id", "archived_at"),)
+
+
+class RunRecord(Base):
+    __tablename__ = "runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    worker_id: Mapped[str] = mapped_column(String(36), ForeignKey("workers.id"), nullable=False)
+    owner_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    worker_name_snapshot: Mapped[str] = mapped_column(String(80), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    url_snapshot: Mapped[str] = mapped_column(String(2048), nullable=False)
+    config_snapshot_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(35), nullable=False)
+    started_at: Mapped[str | None] = mapped_column(String(35), nullable=True)
+    finished_at: Mapped[str | None] = mapped_column(String(35), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_of_run_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("runs.id"), nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    traceparent: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    __table_args__ = (
+        Index("ix_runs_owner_created", "owner_user_id", "created_at"),
+        Index("ix_runs_worker_created", "worker_id", "created_at"),
+        Index("ix_runs_worker_status", "worker_id", "status"),
+    )
+
+
+class RunLogRecord(Base):
+    __tablename__ = "run_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id"), nullable=False)
+    owner_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    timestamp: Mapped[str] = mapped_column(String(35), nullable=False)
+    level: Mapped[str] = mapped_column(String(8), nullable=False)
+    event: Mapped[str] = mapped_column(String(80), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        Index("ix_run_logs_run_id", "run_id", "id"),
+        Index("ix_run_logs_owner_id", "owner_user_id", "id"),
+    )
+
+
 def default_database_url() -> str:
     path = Path(__file__).resolve().parents[1] / "data" / "runguard.db"
     return f"sqlite:///{path}"
@@ -37,11 +100,14 @@ class UserRepository:
         if self.database_url != "sqlite:///:memory:":
             Path(self.database_url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(self.database_url, connect_args={"check_same_thread": False})
+        @event.listens_for(self.engine, "connect")
+        def _enable_foreign_keys(connection, _record):
+            connection.execute("PRAGMA foreign_keys=ON")
         self.sessions = sessionmaker(self.engine, expire_on_commit=False)
 
     def migrate(self) -> None:
         config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
-        config.set_main_option("sqlalchemy.url", self.database_url)
+        config.attributes["database_url"] = self.database_url
         command.upgrade(config, "head")
 
     @staticmethod

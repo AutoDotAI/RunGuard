@@ -1,4 +1,6 @@
 from logging.config import fileConfig
+import os
+from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -6,6 +8,11 @@ from sqlalchemy import engine_from_config, pool
 from app.db import Base
 
 config = context.config
+if database_url := config.attributes.get("database_url") or os.environ.get("RUNGUARD_DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", database_url)
+configured_url = config.get_main_option("sqlalchemy.url")
+if configured_url and configured_url.startswith("sqlite:///") and configured_url != "sqlite:///:memory:":
+    Path(configured_url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
 if config.config_file_name and config.get_section("loggers"):
     fileConfig(config.config_file_name)
 target_metadata = Base.metadata

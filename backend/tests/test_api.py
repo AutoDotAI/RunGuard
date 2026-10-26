@@ -8,6 +8,7 @@ import yaml
 from fastapi.testclient import TestClient
 
 from app.auth import ISSUER
+from app.db import RunRecord
 from app.main import create_app
 
 
@@ -131,9 +132,12 @@ def test_crud_queue_logs_retry_snapshot_and_archive(client):
     snapshot = client.get(f"/api/v1/runs/{run_id}", headers=h).json()
     assert snapshot["url"] == "https://example.com/" and snapshot["worker_name"] == "New check"
     assert client.post(f"/api/v1/runs/{run_id}/retry", headers=h).status_code == 409
-    client.app.state.store.runs[run_id]["status"] = "failed"
-    client.app.state.store.runs[run_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
-    client.app.state.store.runs[run_id]["duration_ms"] = 10
+    with client.app.state.users.sessions() as session:
+        record = session.get(RunRecord, run_id)
+        record.status = "failed"
+        record.finished_at = datetime.now(timezone.utc).isoformat()
+        record.duration_ms = 10
+        session.commit()
     retry = client.post(f"/api/v1/runs/{run_id}/retry", headers=h)
     assert retry.status_code == 202
     retry_run = client.get(f"/api/v1/runs/{retry.json()['run_id']}", headers=h).json()
@@ -158,8 +162,12 @@ def test_pagination_dashboard_and_validation(client):
     assert page["total"] == 2 and len(page["items"]) == 1 and page["limit"] == 1 and page["offset"] == 1
     for status, worker_id in zip(("succeeded", "failed"), worker_ids):
         run_id = client.post(f"/api/v1/workers/{worker_id}/runs", headers=h).json()["run_id"]
-        client.app.state.store.runs[run_id].update(status=status, duration_ms=100,
-                                                    finished_at=datetime.now(timezone.utc).isoformat())
+        with client.app.state.users.sessions() as session:
+            record = session.get(RunRecord, run_id)
+            record.status = status
+            record.duration_ms = 100
+            record.finished_at = datetime.now(timezone.utc).isoformat()
+            session.commit()
     runs = client.get("/api/v1/runs", headers=h, params={"page": 2, "page_size": 1}).json()
     assert runs["total"] == 2 and len(runs["items"]) == 1 and runs["offset"] == 1
     dashboard = client.get("/api/v1/dashboard/summary", headers=h).json()

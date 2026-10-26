@@ -11,7 +11,7 @@ from .auth import TokenService
 from .db import UserRepository
 from .models import Health
 from .routers import auth, dashboard, runs, workers
-from .store import MemoryStore, Problem
+from .store import PersistentStore, Problem
 
 
 def error_response(status: int, code: str, message: str, details: dict | None = None):
@@ -21,7 +21,7 @@ def error_response(status: int, code: str, message: str, details: dict | None = 
     return JSONResponse(status_code=status, content={"error": error, "request_id": str(uuid4())})
 
 
-def create_app(store: MemoryStore | None = None, secret: str | None = None,
+def create_app(store: PersistentStore | None = None, secret: str | None = None,
                database_url: str | None = None) -> FastAPI:
     users = UserRepository(database_url)
 
@@ -37,7 +37,7 @@ def create_app(store: MemoryStore | None = None, secret: str | None = None,
 
     app = FastAPI(title="RunGuard API", version="1.0.0", lifespan=lifespan)
     app.state.users = users
-    app.state.store = store if store is not None else MemoryStore(users)
+    app.state.store = store if store is not None else PersistentStore(users)
     # Keep module import side-effect free; uvicorn validates the configured secret at startup.
     app.state.tokens = TokenService(secret) if secret is not None else None
     origins = os.environ.get("RUNGUARD_CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173")
