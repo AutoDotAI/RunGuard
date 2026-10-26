@@ -3,6 +3,9 @@
 from sqlalchemy import text
 
 
+ALERT_INCIDENT_LOCK = 0x5247414C455254
+
+
 def serialize(session, *, postgres: bool, key: int) -> None:
     """Hold a transaction-scoped advisory lock on PostgreSQL.
 

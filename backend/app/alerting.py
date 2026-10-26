@@ -10,7 +10,7 @@ from uuid import uuid4
 from sqlalchemy import func, select
 
 from .db import AlertRecord, RunRecord, UserRepository
-from .db_serialization import serialize
+from .db_serialization import ALERT_INCIDENT_LOCK, serialize
 from .worker_health import heartbeat_age
 from .models import Alert, AlertPage
 from . import observability
@@ -68,7 +68,7 @@ class AlertService:
         unhealthy = self._heartbeat_unhealthy(current)
         with self.users.sessions() as session:
             serialize(session, postgres=self.users.engine.dialect.name == "postgresql",
-                      key=0x5247414C455254)
+                      key=ALERT_INCIDENT_LOCK)
             # Read only the active rule window. Leave one second of padding for
             # timestamps whose ISO representations differ in fractional precision;
             # exact boundary checks below still use parsed UTC datetimes.

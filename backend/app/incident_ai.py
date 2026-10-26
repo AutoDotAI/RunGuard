@@ -21,7 +21,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 
 from .db import AlertRecord, IncidentAnalysisRecord, IncidentRecord, UserRepository
-from .db_serialization import serialize
+from .db_serialization import ALERT_INCIDENT_LOCK, serialize
 from .store import now
 
 
@@ -200,7 +200,7 @@ class IncidentAI:
             raise ValueError("provider must be codex or claude")
         with self.users.sessions() as session:
             serialize(session, postgres=self.users.engine.dialect.name == "postgresql",
-                      key=0x5247494E4349444E)
+                      key=ALERT_INCIDENT_LOCK)
             incident = session.scalar(select(IncidentRecord).where(
                 IncidentRecord.id == incident_id, IncidentRecord.owner_user_id == owner_id))
             if incident is None:
@@ -264,7 +264,7 @@ class IncidentAI:
 
         with self.users.sessions() as session:
             serialize(session, postgres=self.users.engine.dialect.name == "postgresql",
-                      key=0x5247494E4349444E)
+                      key=ALERT_INCIDENT_LOCK)
             row = session.get(IncidentAnalysisRecord, analysis_id)
             row.status, row.failure_code, row.advisory = status, failure, advisory
             row.content_digest = hashlib.sha256(advisory.encode()).hexdigest() if advisory else None

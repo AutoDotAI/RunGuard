@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from .alerting import AlertService
 from .db import (AlertRecord, IncidentRecord, ResponderActionRecord,
                  RunLogRecord, RunRecord, UserRepository)
-from .db_serialization import serialize
+from .db_serialization import ALERT_INCIDENT_LOCK, serialize
 from .worker_health import heartbeat_age
 from .demo_worker import DemoControl, DemoDenied, require_demo_mode
 from .run_logs import MESSAGES
@@ -94,7 +94,7 @@ class Responder:
         """One incident per owned open alert; reserve an action before invoking it."""
         with self.users.sessions() as session:
             serialize(session, postgres=self.users.engine.dialect.name == "postgresql",
-                      key=0x5247524553504F4E)
+                      key=ALERT_INCIDENT_LOCK)
             alert = session.scalar(select(AlertRecord).where(
                 AlertRecord.id == alert_id, AlertRecord.owner_user_id == owner_id))
             if alert is None:
@@ -224,7 +224,7 @@ class Responder:
                         reason: str, result: str, after_status: str | None = None) -> None:
         with self.users.sessions() as session:
             serialize(session, postgres=self.users.engine.dialect.name == "postgresql",
-                      key=0x5247524553504F4E)
+                      key=ALERT_INCIDENT_LOCK)
             incident = session.get(IncidentRecord, incident_id)
             audit = session.get(ResponderActionRecord, audit_id)
             incident.status = "recovered" if result == "recovered" else "needs_review"

@@ -7,11 +7,14 @@ only outbound website and model clients are faked.
 
 import json
 import sqlite3
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from threading import Barrier
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 
 from app import outbound
@@ -20,6 +23,11 @@ from app.main import create_app
 from app.workers.runner import WorkerRunner
 from app.workers.url_summarizer import summarize
 from app.workers.website_monitor import monitor
+
+
+def migration_head() -> str:
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    return ScriptDirectory.from_config(config).get_current_head()
 
 
 SECRET = "integration-test-signing-secret-at-least-32-bytes"
@@ -36,7 +44,7 @@ def database_url(tmp_path):
 def client(database_url):
     with TestClient(create_app(secret=SECRET, database_url=database_url)) as client:
         with sqlite3.connect(database_url.removeprefix("sqlite:///")) as connection:
-            assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0007_worker_heartbeat"
+            assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == migration_head()
         yield client
 
 
