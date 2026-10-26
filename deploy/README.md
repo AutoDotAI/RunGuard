@@ -1,5 +1,9 @@
 # Public deployment gate (issue #23)
 
+For digest-based development and manual production CD, see
+[CD.md](CD.md). The host safety gate below applies before enabling either
+environment.
+
 The production topology is for **one Linux host with persistent local Docker
 volumes**. It has one API, one worker, one migration job, one web process, and
 one Caddy HTTPS proxy. The API, worker, SQLite volume, and control ports are

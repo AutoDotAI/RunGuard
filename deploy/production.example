@@ -6,3 +6,6 @@ RUNGUARD_AUTH_SECRET=
 RUNGUARD_SUMMARIZER_AVAILABLE=false
 LLM_MODEL=
 OPENAI_API_KEY=
+# Dedicated deployment smoke account; use a strong, unique password.
+RUNGUARD_SMOKE_EMAIL=smoke@example.org
+RUNGUARD_SMOKE_PASSWORD=
