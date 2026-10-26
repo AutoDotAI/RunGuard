@@ -105,6 +105,20 @@ def test_snapshot_selects_exact_host_provider_without_api_fallback(monkeypatch):
     assert seen == [("claude", "claude-sonnet-4-5")]
 
 
+def test_invalid_selected_route_does_not_fall_back_to_environment(monkeypatch):
+    monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "codex")
+    monkeypatch.setattr("app.workers.url_summarizer.HostCLIClient.complete",
+                        lambda self, **kwargs: pytest.fail("Host fallback"))
+    monkeypatch.setattr("app.workers.url_summarizer.LiteLLMClient.complete",
+                        lambda self, **kwargs: pytest.fail("API fallback"))
+    snapshot = RunSnapshot("run-id", "url_summarizer", "https://example.com/article",
+                           json.dumps({"provider_path": "api", "provider": "codex", "model": "default"}))
+    body = b"<html><body><article>" + b"A readable article with facts and context. " * 5 + b"</article></body></html>"
+    result = summarize(snapshot, fetch=lambda _url: FetchResponse(200, {"content-type": "text/html"}, body))
+    assert result.error_code is not None
+    assert result.result is None
+
+
 @pytest.mark.parametrize("provider,env,model", [
     ("codex", "RUNGUARD_CODEX_MODELS", "gpt-5-codex"),
     ("claude", "RUNGUARD_CLAUDE_MODELS", "claude-sonnet-4-5"),
