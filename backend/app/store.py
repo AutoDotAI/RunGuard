@@ -1,11 +1,8 @@
 """Owned worker, run, and log operations backed by SQLite."""
 
 import json
-import socket
 from datetime import datetime, timedelta, timezone
-from ipaddress import ip_address
 from threading import RLock
-from urllib.parse import urlsplit
 from uuid import uuid4
 
 from sqlalchemy import func, select, text
@@ -17,6 +14,7 @@ from .models import (
     DashboardSummary, EnqueuedRun, Run, RunLog, RunLogPage, RunPage,
     Worker, WorkerCreate, WorkerPage, WorkerUpdate,
 )
+from .outbound import OutboundError, parse_public_url
 
 
 def now() -> str:
@@ -32,35 +30,11 @@ class Problem(Exception):
 
 
 def validate_public_url(value: str) -> str:
-    """Reject obvious unsafe destinations at save time; outbound checks follow later."""
+    """Use the worker's URL syntax policy without DNS in the API request path."""
     try:
-        parsed = urlsplit(value.strip())
-        host = parsed.hostname
-        port = parsed.port
-    except ValueError:
-        raise Problem(422, "VALIDATION_ERROR", "Invalid URL") from None
-    if parsed.scheme not in {"http", "https"} or not host or parsed.username or parsed.password:
-        raise Problem(422, "VALIDATION_ERROR", "A public HTTP(S) URL without credentials is required")
-    if port not in {None, 80, 443}:
-        raise Problem(422, "VALIDATION_ERROR", "URL port is not allowed")
-    host = host.rstrip(".").lower()
-    if host == "localhost" or host.endswith((".localhost", ".local", ".internal")) or "." not in host:
-        raise Problem(422, "VALIDATION_ERROR", "Local hostnames are not allowed")
-    try:
-        ip_address(host)
-    except ValueError:
-        pass
-    else:
-        raise Problem(422, "VALIDATION_ERROR", "IP address URLs are not allowed")
-    # socket.inet_aton also recognizes abbreviated, octal, and hexadecimal IPv4
-    # spellings (for example 127.1) that ip_address deliberately rejects.
-    try:
-        socket.inet_aton(host)
-    except OSError:
-        pass
-    else:
-        raise Problem(422, "VALIDATION_ERROR", "IP address URLs are not allowed")
-    return value.strip()
+        return parse_public_url(value).value
+    except OutboundError as exc:
+        raise Problem(422, "VALIDATION_ERROR", exc.message) from None
 
 
 class PersistentStore:

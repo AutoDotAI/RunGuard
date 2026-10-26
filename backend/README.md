@@ -4,6 +4,10 @@ The API stores accounts, worker configurations, queued runs, and logs in SQLite 
 
 Queued runs stay in SQLite until a separate worker process starts. Editing or archiving a worker preserves its earlier run snapshots and logs. The worker currently has no production Website Monitor or URL Summarizer handlers: queued runs are claimed and fail visibly with `HANDLER_UNAVAILABLE`. Real fetch and LiteLLM handlers are separate work.
 
+The shared outbound boundary is `app.outbound.parse_public_url` and `app.outbound.fetch`. The API uses the same URL syntax policy when saving workers without doing DNS or network I/O. Worker fetches revalidate the URL, check every A/AAAA answer, connect to a validated pinned address with the original hostname for HTTPS SNI and certificate checks, disable redirects and ambient proxy use, and cap response reads at 1 MiB with a 10-second total fetch deadline. A stuck DNS lookup leaves at most one daemon resolver thread and makes later fetches fail closed until that lookup completes. Errors use sanitized categories (`URL_INVALID`, `DNS_ERROR`, `DESTINATION_BLOCKED`, `FETCH_TIMEOUT`, `FETCH_ERROR`, `RESPONSE_TOO_LARGE`) with no URL, query, headers, or response body in their messages. Real handlers in Issues #11 and #12 must call this shared fetcher.
+
+**Public release gate:** Do not claim arbitrary user URLs are safe or enable public arbitrary-URL execution yet. Issue #23 must verify host-level outbound egress restrictions, including denial of private, loopback, link-local, and metadata destinations, in the actual deployment. A hostname allowlist alone is insufficient. Until that gate is verified, restrict execution to server-configured trusted public hosts plus enforced egress restrictions, as required by `_docs/old/SPEC.md` §10.2.
+
 ```bash
 cd backend
 uv sync --extra test
