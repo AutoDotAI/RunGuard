@@ -151,9 +151,11 @@ The [course project brief](https://github.com/DataTalksClub/ai-dev-tools-zoomcam
 is an independent review checklist. Keep its telemetry, alert, incident
 response, test, documentation, and peer-review evidence traceable. Public
 deployment and CD rubric items remain acknowledged gaps, deferred by the
-owner under issue #34. Any required
-external peer reviews must be completed by real peers rather than claimed from
-agent QA, and should be tracked separately from implementation work.
+owner under issue #34. The [official peer-review rule](https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/blob/main/project/README.md#peer-reviewing)
+requires the RunGuard owner to **evaluate three projects from other course
+participants** through the course workflow. Reviews received on RunGuard and
+coding-agent QA do not satisfy that requirement; track those evaluations
+separately from implementation work.
 
 ---
 
@@ -1131,7 +1133,7 @@ This section maps planned evidence to the **current official 2026 final-project 
 | Alerting | Failed-run/queue-delay alert with recorded trigger and screenshot |
 | On-Call Agent | Alert-driven bounded agent; controlled demonstrated remediation for full criterion |
 
-**Important:** The official rubric says 12 criteria worth 24 points, with **10 points needed to pass**, and **three peer reviews are separately required** for the certificate path. The final reviewer instructions and deadline should be checked on the course platform before submission.
+**Important:** The official rubric says 12 criteria worth 24 points, with **10 points needed to pass**. The owner must also evaluate **three other participants' projects**; receiving three reviews of RunGuard is not the requirement. Check the deadline and review workflow on the course platform before submission.
 
 ---
 
@@ -1166,6 +1168,6 @@ This section maps planned evidence to the **current official 2026 final-project 
 - [ ] CI workflow status visible; deploy and rollback path documented.
 - [ ] Correlation IDs, metrics/traces/alerts and any responder-agent evidence accurately documented as implemented/not implemented.
 - [ ] All keys and secrets excluded from git, telemetry, screenshots and browser bundles.
-- [ ] Three required peer reviews completed as instructed by the course platform.
+- [ ] Owner evaluated three other participants' projects as instructed by the course platform.
 - [ ] README clearly distinguishes **implemented**, **partial**, and **planned** features.
 
