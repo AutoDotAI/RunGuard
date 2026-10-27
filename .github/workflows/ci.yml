@@ -81,16 +81,9 @@ jobs:
         run: docker build -t runguard-web:ci ./frontend
       - name: Validate local Compose configuration
         run: |
-          trap 'rm -f .env' EXIT
-          python3 - <<'PY'
-          from pathlib import Path
-          import secrets
-
-          Path('.env').write_text(
-              'RUNGUARD_AUTH_SECRET=' + secrets.token_hex(32) + '\n'
-              'RUNGUARD_POSTGRES_PASSWORD=' + secrets.token_hex(32) + '\n'
-          )
-          PY
+          test ! -e .env
           docker compose config --quiet
       - name: Verify isolated PostgreSQL health and persistence
         run: python3 scripts/postgres_compose_smoke.py
+      - name: Verify no-variable first run and existing-data upgrade
+        run: python3 scripts/first_run_smoke.py

@@ -9,26 +9,25 @@ links independent issue checks.
 
 ## Setup and checks
 
-Create an ignored root `.env` with a stable `RUNGUARD_AUTH_SECRET` of at
-least 32 bytes and `RUNGUARD_POSTGRES_PASSWORD`. Reuse it on restart. From
-the repository root:
+From a fresh clone, Docker Compose creates private persistent local
+credentials; no `.env` or exported variables are needed. From the repository
+root:
 
 ```bash
-docker compose config --quiet
-docker compose up --build -d
-docker compose ps --all
-curl -fsS http://127.0.0.1:8000/health
+docker compose up --build
 ```
 
 Open <http://127.0.0.1:3000/signup>. PostgreSQL persists accounts, workers,
 runs, logs, alerts and settings; `docker compose down` retains the database
-volume. The older SQLite volume is preserved separately and needs a verified
-offline import before historical records appear. See [local recovery](local-recovery.md).
+volume. An existing installation's ignored `.env` and imported database retain
+their credentials and records. The older SQLite volume is preserved separately;
+see [local recovery](local-recovery.md) for any pre-cutover installation.
 Never use `down --volumes` on the normal project.
 
 For source tests, use `make install`, `make test`, `make typecheck`,
 `make build`, and `make security-check`. `make postgres-smoke` tests
-persistence in a disposable Compose project. `make compose-smoke` performs
+persistence in a disposable Compose project; `make first-run-smoke` tests
+fresh boot and a synthetic existing-data upgrade. `make compose-smoke` performs
 an API→worker journey with `example.com` and requires outbound HTTPS.
 Backend unit and integration tests use fake HTTP and model adapters instead
 of live paid services.

@@ -17,7 +17,7 @@ OBS_COMPOSE = $(DOCKER) compose -p "$$OBS_PROJECT" -f compose.yaml -f compose.ob
 STALL_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability
 RESPONDER_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability --profile responder
 
-.PHONY: help install install-backend install-frontend test test-backend test-postgres test-frontend typecheck build build-frontend build-images check security-check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke postgres-smoke postgres-import postgres-backup postgres-restore postgres-recovery-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry
+.PHONY: help install install-backend install-frontend test test-backend test-postgres test-frontend typecheck build build-frontend build-images check security-check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke postgres-smoke first-run-smoke postgres-import postgres-backup postgres-restore postgres-recovery-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry
 
 help: ## List every Makefile target; no install or service start
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-24s %s\n", $$1, $$2}' Makefile
@@ -54,19 +54,18 @@ migrate: ## Apply Alembic migrations to the selected local PostgreSQL database
 api: ## Start loopback API in this terminal; export a stable RUNGUARD_AUTH_SECRET first
 	@test -n "$$RUNGUARD_AUTH_SECRET" || { echo 'Set stable RUNGUARD_AUTH_SECRET (at least 32 bytes) first' >&2; exit 2; }
 	cd backend && $(UV) run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
-worker: ## Start one host worker; Codex CLI is default (same API database URL)
-	cd backend && $(UV) run python -m app.workers.runner
-worker-codex: ## Start one host worker using signed-in Codex CLI (local subscription)
-	cd backend && RUNGUARD_MODEL_PROVIDER=codex $(UV) run python -m app.workers.runner
-worker-claude: ## Start one host worker using signed-in Claude CLI
-	cd backend && RUNGUARD_MODEL_PROVIDER=claude $(UV) run python -m app.workers.runner
+worker: worker-codex ## Start one host worker; Codex CLI is default
+worker-codex: ## Stop the container worker and start host Codex CLI with local Compose DB
+	cd backend && $(UV) run python -m app.local_host_worker codex
+worker-claude: ## Stop the container worker and start host Claude CLI with local Compose DB
+	cd backend && $(UV) run python -m app.local_host_worker claude
 worker-litellm: ## Start one host worker with server-side LLM_MODEL and provider key
 	@test -n "$$LLM_MODEL" || { echo 'Set LLM_MODEL and its server-side provider credential first' >&2; exit 2; }
 	cd backend && RUNGUARD_MODEL_PROVIDER=litellm $(UV) run python -m app.workers.runner
 frontend: ## Start local Vite frontend in this terminal; configure frontend/.env.local
 	cd frontend && $(NPM) run dev
 
-compose-config: ## Validate local Compose configuration (.env with stable secret required)
+compose-config: ## Validate local Compose configuration; no .env required
 	$(DOCKER) compose config --quiet
 compose-up: ## Build/start local API, worker, web and PostgreSQL; retain both volumes
 	$(DOCKER) compose up --build -d
@@ -80,6 +79,8 @@ compose-smoke: ## Run API-to-worker smoke (uses example.com outbound HTTPS)
 	$(PYTHON) scripts/compose_smoke.py
 postgres-smoke: ## Check isolated PostgreSQL health and restart persistence
 	$(PYTHON) scripts/postgres_compose_smoke.py
+first-run-smoke: ## Verify no-.env boot, restart, and old-credential upgrade in disposable projects
+	$(PYTHON) scripts/first_run_smoke.py
 postgres-import: ## One-time offline SQLite import; set absolute SQLITE_SOURCE/SQLITE_BACKUP and PG URL
 	@test "$$OFFLINE_CONFIRMED" = true || { echo 'Stop API/worker and set OFFLINE_CONFIRMED=true' >&2; exit 2; }
 	@test -n "$$RUNGUARD_DATABASE_URL" && test -n "$$SQLITE_SOURCE" && test -n "$$SQLITE_BACKUP" || { echo 'Set RUNGUARD_DATABASE_URL, SQLITE_SOURCE, and SQLITE_BACKUP' >&2; exit 2; }

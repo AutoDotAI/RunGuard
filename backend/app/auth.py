@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import os
 import secrets
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -39,6 +40,8 @@ def verify_password(password: str, stored: str) -> bool:
 class TokenService:
     def __init__(self, secret: str | None = None):
         self.secret = secret or os.environ.get("RUNGUARD_AUTH_SECRET")
+        if not self.secret and (secret_file := os.environ.get("RUNGUARD_AUTH_SECRET_FILE")):
+            self.secret = Path(secret_file).read_text()
         if self.secret is None:
             raise ValueError("RUNGUARD_AUTH_SECRET must be configured")
         if len(self.secret.encode()) < 32:
