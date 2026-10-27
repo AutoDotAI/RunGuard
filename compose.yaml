@@ -116,7 +116,7 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: http://localhost:8000
+        VITE_API_BASE_URL: ""
         VITE_DEMO_MODE: ${RUNGUARD_DEMO_MODE:-false}
         VITE_ALLOWED_HOSTS: ${RUNGUARD_ALLOWED_HOSTS:-}
     depends_on:

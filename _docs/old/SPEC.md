@@ -178,6 +178,16 @@
   containers. Document the one-command start and optional real-model setup
   accurately, and test both a fresh no-config start and a restart over the
   already imported PostgreSQL data.
+- In the Compose web build, the browser sends authentication and application
+  requests to `/api/v1/*` on the same origin as the site. The Node web server
+  forwards only that fixed API prefix to the internal Compose API service;
+  it preserves the request method, bearer header, body, response status, and
+  response body, and returns a sanitized 502 when the API is unreachable.
+  Do not make the browser resolve `localhost:8000` separately from the site:
+  `localhost` and `127.0.0.1` or forwarded ports can refer to different
+  browser destinations. Keep the upstream fixed to the Compose network and
+  do not turn the proxy into a general URL fetcher. The regular Lovable/Vite
+  development workflow may continue using its configured API base URL.
 
 ### Current acceptance target for the no-key Summarizer demo
 
