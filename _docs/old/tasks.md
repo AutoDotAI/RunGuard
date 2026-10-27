@@ -207,3 +207,7 @@ Description: Compare the delivered app and evidence with the [Zoomcamp project b
 ## 54. Evaluate three other Zoomcamp projects
 Goal: Complete the course's required peer reviewing of other participants' work.
 Description: Follow the [official peer-review rule](https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/blob/main/project/README.md#peer-reviewing) and course-platform workflow to evaluate three projects submitted by other participants against the rubric. Record the permitted submission evidence and deadlines; reviews received on RunGuard and coding-agent QA do not count toward this obligation.
+
+## 55. Start local RunGuard without manual variables
+Goal: Make `docker compose up --build` start a usable local site from a fresh clone without a pre-created `.env` or exported variables.
+Description: Bootstrap unique, persistent local database and JWT secrets through private Docker state while honoring any existing `.env` and PostgreSQL volume; never substitute a fixed shared secret or reset imported data. Verify fresh signup, login, Website Monitor execution, truthful unavailable AI catalog, and restart persistence with no manual configuration, then verify the existing imported database still opens with its original accounts and history. Keep the normal site stopped during development and use isolated Compose projects for tests.
