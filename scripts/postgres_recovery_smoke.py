@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import sqlite3
 import socket
 import subprocess
 import sys
@@ -17,7 +18,8 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.db import RunLogRecord, RunRecord  # noqa: E402
+from app.auth import hash_password  # noqa: E402
+from app.db import RunLogRecord, RunRecord, UserRepository  # noqa: E402
 from app.main import create_app  # noqa: E402
 
 PROJECT = f"rg-recovery-smoke-{uuid4().hex[:10]}"
@@ -26,6 +28,7 @@ PASSWORD = secrets.token_hex(32)
 USER = "runguard"
 DATABASE = "runguard"
 RESTORED = "runguard_restored"
+IMPORTED = "runguard_import_check"
 EMAIL = "backup-smoke@example.com"
 LOGIN_PASSWORD = "CorrectHorse123!"
 
@@ -131,6 +134,33 @@ def main() -> None:
             command(recovery, "restore", str(archive), RESTORED)
             assert command(recovery, "restore", str(archive), RESTORED, check=False).returncode != 0
 
+            source = Path(directory) / "source.sqlite3"
+            repository = UserRepository(f"sqlite:///{source}")
+            repository.migrate()
+            repository.close()
+            with sqlite3.connect(source) as connection:
+                connection.execute(
+                    "INSERT INTO users(id,email,password_hash,created_at) VALUES (?,?,?,?)",
+                    ("imported-user", "imported@example.com", hash_password(LOGIN_PASSWORD),
+                     "2026-01-01T00:00:00Z"),
+                )
+            sqlite_source_before = source.read_bytes()
+            compose("exec", "-T", "postgres", "createdb", "-U", USER,
+                    "-T", "template0", IMPORTED)
+            imported_repository = UserRepository(database_url(IMPORTED))
+            imported_repository.migrate()
+            imported_repository.close()
+            import_backup = Path(directory) / "import-source-backup.sqlite3"
+            import_env = ENV.copy()
+            import_env.update(RUNGUARD_DATABASE_URL=database_url(IMPORTED),
+                              SQLITE_SOURCE=str(source), SQLITE_BACKUP=str(import_backup),
+                              OFFLINE_CONFIRMED="true")
+            subprocess.run(["make", "postgres-import"], cwd=ROOT, env=import_env,
+                           check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           text=True)
+            assert import_backup.is_file() and import_backup.stat().st_mode & 0o077 == 0
+            assert source.read_bytes() == sqlite_source_before
+
         with TestClient(create_app(secret=SECRET, database_url=database_url(RESTORED))) as client:
             login = client.post("/api/v1/auth/login", json={
                 "email": EMAIL, "password": LOGIN_PASSWORD})
@@ -142,7 +172,11 @@ def main() -> None:
             logs = client.get(f"/api/v1/runs/{run_id}/logs", headers=bearer)
             assert logs.status_code == 200, logs.text
             assert [item["event"] for item in logs.json()["items"]] == ["HTTP_ERROR"]
-        print("PASS: private pg_dump archive restored to a fresh database; login/run/log reads work")
+        with TestClient(create_app(secret=SECRET, database_url=database_url(IMPORTED))) as client:
+            login = client.post("/api/v1/auth/login", json={
+                "email": "imported@example.com", "password": LOGIN_PASSWORD})
+            assert login.status_code == 200, login.text
+        print("PASS: fresh PostgreSQL restore and guarded SQLite import; login/run/log reads work")
     finally:
         try:
             compose("down", "--volumes")

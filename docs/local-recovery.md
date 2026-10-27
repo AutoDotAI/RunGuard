@@ -39,19 +39,18 @@ set -a
 . ./.env
 set +a
 export RUNGUARD_DATABASE_URL="postgresql+psycopg://runguard:$RUNGUARD_POSTGRES_PASSWORD@127.0.0.1:5432/runguard"
-export SQLITE_SNAPSHOT="$PWD/private-backups/REPLACE_WITH_REPORTED_FILENAME.db"
-cd backend
-uv run --locked alembic upgrade head
-uv run --locked python -m app.import_sqlite \
-  --source "$SQLITE_SNAPSHOT" \
-  --backup "$PWD/../private-backups/import-source-snapshot.sqlite3" \
-  --offline-confirmed
-cd ..
+export SQLITE_SOURCE="$PWD/private-backups/REPLACE_WITH_REPORTED_FILENAME.db"
+export SQLITE_BACKUP="$PWD/private-backups/import-source-snapshot.sqlite3"
+(cd backend && uv run --locked alembic upgrade head)
+OFFLINE_CONFIRMED=true make postgres-import
 ```
 
 Use the configured `RUNGUARD_POSTGRES_USER`, `RUNGUARD_POSTGRES_DB`, and
 `RUNGUARD_POSTGRES_PORT` if they differ from the defaults shown above.
-The importer refuses a nonempty or incompatible PostgreSQL target and retains
+The Make target invokes `python -m app.import_sqlite --source ... --backup ...
+--offline-confirmed` and refuses to run without the explicit offline guard and
+absolute paths. The importer refuses a nonempty or incompatible PostgreSQL
+target and retains
 the source snapshot on failure. Keep the original volume even after successful
 verification. Keep the same `RUNGUARD_AUTH_SECRET` so existing bearer tokens
 and account sessions retain their expected signing key.
@@ -63,8 +62,8 @@ is created with private 0600 permissions. The restore command requires a **new
 database name** and refuses the active database or any existing database:
 
 ```bash
-./scripts/local_pg_recovery.sh backup private-backups/runguard-pg.dump
-./scripts/local_pg_recovery.sh restore private-backups/runguard-pg.dump runguard_restore_check
+ARCHIVE_PATH=private-backups/runguard-pg.dump make postgres-backup
+ARCHIVE_PATH=private-backups/runguard-pg.dump RESTORE_DB=runguard_restore_check make postgres-restore
 ```
 
 The script uses `pg_dump` and `pg_restore` from the PostgreSQL 16 service
@@ -76,14 +75,13 @@ database also needs the same `RUNGUARD_AUTH_SECRET`; the signing secret is
 
 For a safe automated practice restore, run the disposable smoke below. It
 creates a separate Compose project, writes a test account/run/log, restores into
-a fresh database, checks login and historical run/log API reads, and deletes
-only its own test volume:
+a fresh database, checks login and historical run/log API reads, runs the
+guarded SQLite importer against another fresh database, and deletes only its
+own test volume:
 
 ```bash
-cd backend
-uv sync --locked --extra test
-uv run --no-sync python ../scripts/postgres_recovery_smoke.py
-cd ..
+make install-backend
+make postgres-recovery-smoke
 ```
 
 Before using a restored copy for real work, point a local API at that fresh
