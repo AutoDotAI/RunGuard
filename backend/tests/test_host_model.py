@@ -64,12 +64,31 @@ def test_explicit_litellm_selection_uses_configured_model(monkeypatch):
 
     calls = []
     monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "litellm")
-    monkeypatch.setenv("LLM_MODEL", "test/model")
+    monkeypatch.setenv("LLM_MODEL", "openai/test-model")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-key")
     monkeypatch.setattr(LiteLLMClient, "complete", lambda _self, **kwargs:
                         calls.append(kwargs) or "# Report\n- One.\n- Two.\n- Three.")
     outcome = summarize(SNAPSHOT, fetch=lambda _url: PAGE)
-    assert outcome.result["model"] == "test/model"
+    assert outcome.result["model"] == "openai/test-model"
     assert len(calls) == 1
+
+
+def test_legacy_litellm_without_api_key_never_calls_provider(monkeypatch):
+    from app.workers.llm import LiteLLMClient
+
+    monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "litellm")
+    monkeypatch.setenv("LLM_MODEL", "openai/test-model")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    calls = []
+    monkeypatch.setattr(LiteLLMClient, "complete", lambda _self, **kwargs:
+                        calls.append(kwargs) or "# Should not run")
+    events = []
+    outcome = summarize(SNAPSHOT, fetch=lambda _url: PAGE,
+                        log=lambda event, message, level: events.append(event))
+    assert outcome.error_code == "MODEL_PROVIDER_UNAVAILABLE"
+    assert outcome.result is None
+    assert calls == []
+    assert "LLM_REQUEST_STARTED" not in events
 
 
 @pytest.mark.parametrize("choice", ["disabled", "litellm", "invalid"])

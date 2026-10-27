@@ -91,7 +91,7 @@ def _provider(snapshot: RunSnapshot, llm: LLMClient | None,
         return HostCLIClient(choice), f"{choice}-cli"
     if choice == "litellm":
         label = os.environ.get("LLM_MODEL", "").strip()
-        return (LiteLLMClient(), label) if label else None
+        return (LiteLLMClient(), label) if label and has_model_credential(label, os.environ) else None
     return None
 
 
