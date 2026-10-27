@@ -15,6 +15,8 @@ Deployment backup, manual rollback, and local rehearsal commands are in
 [docs/deployment.md](docs/deployment.md).
 Local metrics, logs, traces, and an offline API-to-worker smoke are in
 [docs/observability.md](docs/observability.md).
+Local SQLite cutover backup and PostgreSQL dump/restore commands are in
+[docs/local-recovery.md](docs/local-recovery.md).
 
 RunGuard's work and independent QA are recorded in [public issues](https://github.com/AutoDotAI/RunGuard/issues).
 This checkout contains a FastAPI backend with SQLite-backed local accounts,
