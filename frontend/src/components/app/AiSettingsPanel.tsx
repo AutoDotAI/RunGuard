@@ -6,6 +6,8 @@ import { api } from "@/lib/api/client";
 import type { AiProvider, AiSettingsInput } from "@/lib/api/types";
 
 type SettingsClient = Pick<typeof api, "getAiProviders" | "getAiSettings" | "updateAiSettings">;
+const DEMO_POLL_INTERVAL_MS = 1_000;
+const DEMO_MAX_POLLS = 30;
 
 function providerKey(provider: AiProvider): string {
   return `${provider.provider_path}:${provider.provider}`;
@@ -25,6 +27,21 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
   });
   const [choice, setChoice] = useState<AiSettingsInput | null>(null);
   const [saved, setSaved] = useState(false);
+  const [demoPolls, setDemoPolls] = useState(0);
+
+  const demoUnavailable = settings.data?.provider_path === "local_demo" &&
+    (!settings.data.available || !catalog.data?.providers.some((provider) =>
+      provider.provider_path === "local_demo" && provider.provider === "extractive" && provider.available));
+
+  useEffect(() => {
+    if (!demoUnavailable || catalog.error || settings.error || demoPolls >= DEMO_MAX_POLLS) return;
+    const timer = window.setTimeout(() => {
+      void Promise.allSettled([catalog.refetch(), settings.refetch()]).then(() => {
+        setDemoPolls((count) => count + 1);
+      });
+    }, DEMO_POLL_INTERVAL_MS);
+    return () => window.clearTimeout(timer);
+  }, [catalog.error, catalog.refetch, demoUnavailable, demoPolls, settings.error, settings.refetch]);
 
   useEffect(() => {
     if (settings.data) {
@@ -95,6 +112,21 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
         uses no AI model. Codex and Claude use a host worker; LiteLLM uses a server configured API key.
         Credentials stay on the server or host.
       </p>
+      {demoUnavailable && demoPolls < DEMO_MAX_POLLS && (
+        <p role="status" className="rounded-md border p-4 text-sm">
+          Waiting for the local demo worker to start. Availability refreshes automatically.
+        </p>
+      )}
+      {demoUnavailable && demoPolls >= DEMO_MAX_POLLS && (
+        <p role="alert" className="rounded-md border p-4 text-sm">
+          The local demo worker has not connected. Check the worker service, then{" "}
+          <Button type="button" variant="outline" className="ml-2" onClick={() => {
+            setDemoPolls(0);
+            void catalog.refetch();
+            void settings.refetch();
+          }}>Try again</Button>
+        </p>
+      )}
       {providers.length === 0 && (
         <p role="status" className="rounded-md border p-4 text-sm">
           No summary provider is available. Start the local worker, a host worker, or configure a
@@ -147,7 +179,7 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
           );
         })}
       </fieldset>
-      {unavailableChoice && (
+      {unavailableChoice && !demoUnavailable && (
         <p role="alert" className="text-sm text-destructive">
           Your saved provider is unavailable. Select an available provider to continue.
         </p>
