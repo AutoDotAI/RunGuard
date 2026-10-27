@@ -227,3 +227,23 @@ Description: Replace the in-repo responder policy with a small PostgreSQL/demo-c
 ## 59. Prune unused local helper scripts
 Goal: Keep one documented owner and a verified caller for each local smoke or recovery script.
 Description: Inventory the nine current `scripts/` files after task #58 moves the responder drill; `postgres_network_smoke.py` currently has no Makefile, CI, documentation, or test caller. Remove a script only when its behavior is covered elsewhere or add a justified verified caller, then update Makefile/docs/CI references and run the affected local checks without deleting backup, PostgreSQL, observability, or security coverage.
+
+## 60. Refresh AI provider availability after a host worker connects
+Goal: Let the AI settings page show an authenticated Codex or Claude host worker without misreporting missing API credentials.
+Description: Add an explicit provider refresh control that fetches the current catalog without erasing an unsaved choice, and allow a bounded host CLI login status check enough time for a normally responsive Claude CLI. Test a late worker connection, slow/failed CLI status, unchanged demo operation, and the LiteLLM option staying unavailable without a server-side key; no paid model request or browser-stored secret is needed.
+
+## 61. Define and persist account-owned API credentials
+Goal: Establish a safe contract and encrypted local storage for self-service OpenAI and Anthropic keys.
+Description: Update `openapi.yaml` with authenticated credential status, create/replace, and delete routes and their non-secret schemas; add a PostgreSQL migration and per-account encrypted credential repository. Generate a unique encryption key in the private Compose secrets volume on first boot, preserve it across restart, and test ciphertext-at-rest, account isolation, and missing-key failure without logging a credential.
+
+## 62. Add authenticated API-key configuration endpoints
+Goal: Let an account configure and revoke its own OpenAI or Anthropic key without a Compose restart.
+Description: Implement the task #61 OpenAPI routes using the encrypted repository, accepting a key only in the request body and returning provider/configured status without plaintext or partial key values. Make the provider catalog expose backend-approved OpenAI and Anthropic model choices and truthful per-account availability; test invalid input, replacement, deletion, two-user isolation, and secret-free errors.
+
+## 63. Run account-owned API models in the worker
+Goal: Execute a URL Summarizer with the selected account's OpenAI or Anthropic key through LiteLLM.
+Description: Resolve the run owner's stored credential inside the separate worker after claim, pass it as a per-call argument to the LiteLLM adapter, and keep provider/model snapshots immutable without copying keys into run records or environment variables. Test both provider paths with fake LiteLLM, missing/revoked keys, sanitized provider errors, and no automatic fallback or paid test request.
+
+## 64. Make all four AI paths configurable from the page
+Goal: Let a clean-clone user choose the local demo, connect a host CLI, or enter an OpenAI/Anthropic API key from `/settings/ai`.
+Description: Keep all four paths visible and clickable even when a real provider is not yet runnable; show host-worker setup for Codex/Claude and a transient key/model form for API use, with save, replace, delete, loading, and error states. Sync the typed frontend client with the task #61 contract, never store the key in browser storage, and verify a fresh no-`.env` Compose journey plus restart persistence with fake model calls and updated reviewer instructions.
