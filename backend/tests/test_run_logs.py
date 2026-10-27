@@ -20,7 +20,15 @@ SENTINEL = "PRIVATE_PAGE_TOKEN_AND_PROMPT_123"
 
 
 def client_for(path):
-    return TestClient(create_app(secret=SECRET, database_url=f"sqlite:///{path}"))
+    app = create_app(secret=SECRET, database_url=f"sqlite:///{path}")
+    app.state.ai_settings.capability_reader = lambda: {"litellm"}
+    return TestClient(app)
+
+
+def select_fake_litellm(client, headers):
+    response = client.put("/api/v1/ai/settings", headers=headers, json={
+        "provider_path": "api", "provider": "litellm", "model": "openai/test-model"})
+    assert response.status_code == 200, response.text
 
 
 def register(client, email):
@@ -122,7 +130,8 @@ def test_large_nonnegative_cursor_is_empty_without_sqlite_overflow(tmp_path, cur
 def test_summarizer_failure_logs_are_safe_and_terminal(tmp_path, monkeypatch, failure):
     path = tmp_path / f"{failure}.db"
     monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "litellm")
-    monkeypatch.setenv("LLM_MODEL", "test/model")
+    monkeypatch.setenv("RUNGUARD_LITELLM_MODELS", "openai/test-model")
+    monkeypatch.setenv("OPENAI_API_KEY", "fake-test-key-never-sent")
 
     def fetch(_url):
         if failure == "fetch":
@@ -138,6 +147,7 @@ def test_summarizer_failure_logs_are_safe_and_terminal(tmp_path, monkeypatch, fa
     monkeypatch.setattr(LiteLLMClient, "complete", llm)
     with client_for(path) as client:
         alice = register(client, f"{failure}@example.com")
+        select_fake_litellm(client, alice)
         _, run_id = enqueue(client, alice, "url_summarizer")
         with WorkerRunner(f"sqlite:///{path}") as runner:
             assert runner.run_once()
@@ -161,12 +171,14 @@ def test_summarizer_failure_logs_are_safe_and_terminal(tmp_path, monkeypatch, fa
 def test_summarizer_success_logs_every_step(tmp_path, monkeypatch):
     path = tmp_path / "success.db"
     monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "litellm")
-    monkeypatch.setenv("LLM_MODEL", "test/model")
+    monkeypatch.setenv("RUNGUARD_LITELLM_MODELS", "openai/test-model")
+    monkeypatch.setenv("OPENAI_API_KEY", "fake-test-key-never-sent")
     monkeypatch.setattr(outbound, "fetch", lambda _url: outbound.FetchResponse(
         200, {"Content-Type": "text/html"}, b"<p>" + b"readable evidence " * 20 + b"</p>"))
     monkeypatch.setattr(LiteLLMClient, "complete", lambda _self, **_kwargs: "# Summary\n- Fact")
     with client_for(path) as client:
         alice = register(client, "summary@example.com")
+        select_fake_litellm(client, alice)
         _, run_id = enqueue(client, alice, "url_summarizer")
         with WorkerRunner(f"sqlite:///{path}") as runner:
             assert runner.run_once()

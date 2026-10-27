@@ -150,13 +150,19 @@ def test_queue_to_persisted_result_and_logs(tmp_path, monkeypatch):
     database_url = f"sqlite:///{tmp_path / 'summary.db'}"
     llm = FakeLLM()
     monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "litellm")
-    monkeypatch.setenv("LLM_MODEL", "test/model")
+    monkeypatch.setenv("RUNGUARD_LITELLM_MODELS", "openai/test-model")
+    monkeypatch.setenv("OPENAI_API_KEY", "fake-test-key-never-sent")
     monkeypatch.setattr(outbound, "fetch", lambda _url: page())
     monkeypatch.setattr(LiteLLMClient, "complete", lambda _self, **kwargs: llm.complete(**kwargs))
-    with TestClient(create_app(secret=SECRET, database_url=database_url)) as client:
+    app = create_app(secret=SECRET, database_url=database_url)
+    app.state.ai_settings.capability_reader = lambda: {"litellm"}
+    with TestClient(app) as client:
         token = client.post("/api/v1/auth/register", json={
             "email": "summary@example.com", "password": "CorrectHorse123!"}).json()["access_token"]
         auth = {"Authorization": f"Bearer {token}"}
+        selected = client.put("/api/v1/ai/settings", headers=auth, json={
+            "provider_path": "api", "provider": "litellm", "model": "openai/test-model"})
+        assert selected.status_code == 200, selected.text
         worker = client.post("/api/v1/workers", headers=auth, json={
             "name": "Summary", "kind": "url_summarizer", "url": URL}).json()
         run_id = client.post(f"/api/v1/workers/{worker['id']}/runs", headers=auth).json()["run_id"]
