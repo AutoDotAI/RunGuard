@@ -1,4 +1,4 @@
-"""Per-user model choice and a capability catalog without credential exposure."""
+"""Per-user summary method choice and catalog without credential exposure."""
 
 import json
 import os

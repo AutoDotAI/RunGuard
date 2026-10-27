@@ -1,4 +1,4 @@
-"""Bounded HTML extraction and one model request for a queued URL snapshot."""
+"""Bounded HTML extraction and the selected summary path for a queued URL."""
 
 import os
 import re
