@@ -43,6 +43,7 @@ def database_url(tmp_path):
 @pytest.fixture
 def client(database_url):
     with TestClient(create_app(secret=SECRET, database_url=database_url)) as client:
+        client.app.state.ai_settings.capability_reader = lambda: {"codex"}
         with sqlite3.connect(database_url.removeprefix("sqlite:///")) as connection:
             assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == migration_head()
         yield client

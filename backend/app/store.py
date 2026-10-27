@@ -55,6 +55,9 @@ class PersistentStore:
                  clock: Callable[[], datetime] | None = None):
         self.users = users
         self.clock = clock or (lambda: datetime.now(timezone.utc))
+        # Wired by the API after its settings service is constructed. Tests
+        # using the store directly retain their explicit worker config.
+        self.ai_settings = None
         # This lock limits contention within one process. PostgreSQL row locks
         # serialize per-owner worker quota checks across API processes.
         self.lock = RLock()
@@ -219,8 +222,17 @@ class PersistentStore:
         with self.lock, self.users.sessions() as session:
             self._lock_enqueue_owner(session, owner)
             worker = self._owned_worker(session, owner, worker_id)
+            config_json = worker.config_json
+            if worker.kind == "url_summarizer" and self.ai_settings is not None:
+                selection = self.ai_settings.get(owner)
+                if not selection.available:
+                    raise Problem(409, "PROVIDER_UNAVAILABLE", "Selected provider is unavailable.")
+                config = json.loads(worker.config_json)
+                config.update({"provider_path": selection.provider_path,
+                               "provider": selection.provider, "model": selection.model})
+                config_json = json.dumps(config, sort_keys=True, separators=(",", ":"))
             return self._enqueue(session, owner, worker, worker.url, None,
-                                 worker.name, worker.config_json, worker.kind)
+                                 worker.name, config_json, worker.kind)
 
     def retry_run(self, owner: str, run_id: str) -> EnqueuedRun:
         with self.lock, self.users.sessions() as session:

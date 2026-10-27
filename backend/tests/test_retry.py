@@ -20,7 +20,9 @@ SECRET = "test-only-signing-secret-32-bytes-minimum"
 
 
 def app_for(path: Path):
-    return create_app(secret=SECRET, database_url=f"sqlite:///{path}")
+    app = create_app(secret=SECRET, database_url=f"sqlite:///{path}")
+    app.state.ai_settings.capability_reader = lambda: {"codex"}
+    return app
 
 
 def auth(token: str):
@@ -89,6 +91,9 @@ def concurrent_requests(a, b, token, first_path, second_path):
 def test_retry_preserves_original_snapshot_and_logs_across_restart(tmp_path, kind):
     path = tmp_path / "app.db"
     config = json.dumps({"original": kind, "version": 1}, separators=(",", ":"))
+    expected_config = (config if kind == "website_monitor" else json.dumps({
+        "original": kind, "version": 1, "provider_path": "backend_cli",
+        "provider": "codex", "model": "default"}, sort_keys=True, separators=(",", ":")))
     observed = []
     with TestClient(app_for(path)) as client:
         token = register(client, "alice@example.com")
@@ -131,7 +136,7 @@ def test_retry_preserves_original_snapshot_and_logs_across_restart(tmp_path, kin
         with client.app.state.users.sessions() as session:
             original = session.get(RunRecord, source_id)
             retried = session.get(RunRecord, new_id)
-            assert retried.config_snapshot_json == original.config_snapshot_json == config
+            assert retried.config_snapshot_json == original.config_snapshot_json == expected_config
             assert retried.kind == original.kind == kind
             assert json.loads(original.result_json) == source_before["result"]
             assert original.http_status == 503
@@ -153,7 +158,7 @@ def test_retry_preserves_original_snapshot_and_logs_across_restart(tmp_path, kin
         with WorkerRunner(f"sqlite:///{path}", {kind: handle}) as runner:
             assert runner.run_once() is True
             assert runner.run_once() is False
-        assert observed == [(new_id, kind, "https://example.com/original", config)]
+        assert observed == [(new_id, kind, "https://example.com/original", expected_config)]
         assert restarted.get(f"/api/v1/runs/{new_id}", headers=auth(token)).json()["status"] == "failed"
         assert restarted.get(f"/api/v1/runs/{source_id}", headers=auth(token)).json() == source_before
         with WorkerRunner(f"sqlite:///{path}", {kind: handle}) as runner:

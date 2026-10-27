@@ -19,7 +19,9 @@ SECRET = "test-only-signing-secret-32-bytes-minimum"
 
 
 def setup_client(path):
-    return TestClient(create_app(secret=SECRET, database_url=f"sqlite:///{path}"))
+    app = create_app(secret=SECRET, database_url=f"sqlite:///{path}")
+    app.state.ai_settings.capability_reader = lambda: {"codex"}
+    return TestClient(app)
 
 
 def auth(token):
@@ -148,25 +150,20 @@ def test_oldest_first_one_active_execution_and_sanitized_failure(tmp_path):
             assert session.get(RunRecord, second).retry_of_run_id is None
 
 
-def test_unconfigured_summarizer_fails_visibly_without_fabricated_result(tmp_path, monkeypatch):
+def test_unconfigured_summarizer_rejects_enqueue_without_fabricated_result(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "disabled")
     monkeypatch.delenv("LLM_MODEL", raising=False)
     path = tmp_path / "app.db"
     with setup_client(path) as client:
+        client.app.state.ai_settings.capability_reader = lambda: set()
         token = register(client)
-        _, summarizer = enqueue(client, token, "Summarizer", "url_summarizer")
-        from app import outbound
-        monkeypatch.setattr(outbound, "fetch", lambda _url: outbound.FetchResponse(
-            200, {"Content-Type": "text/html"},
-            b"<p>A readable report describes the incident, timeline, community response, "
-            b"and mitigation work in sufficient factual detail for a summary.</p>"))
-        with WorkerRunner(f"sqlite:///{path}") as runner:
-            assert runner.run_once()
-        final = run(client, token, summarizer)
-        assert final["status"] == "failed"
-        assert final["result"] is None
-        assert final["error"]["code"] == "LLM_ERROR"
-        assert "LLM_ERROR" in [item["event"] for item in logs(client, token, summarizer)["items"]]
+        created = client.post("/api/v1/workers", headers=auth(token), json={
+            "name": "Summarizer", "kind": "url_summarizer", "url": "https://example.com/path"})
+        assert created.status_code == 201
+        rejected = client.post(f"/api/v1/workers/{created.json()['id']}/runs", headers=auth(token))
+        assert rejected.status_code == 409
+        assert rejected.json()["error"]["code"] == "PROVIDER_UNAVAILABLE"
+        assert client.get("/api/v1/runs", headers=auth(token)).json()["total"] == 0
 
 
 def test_cli_process_consumes_durable_queue_after_api_restart(tmp_path):

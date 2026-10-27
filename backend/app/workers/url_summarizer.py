@@ -68,12 +68,23 @@ def _clean(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
-def _provider(llm: LLMClient | None, model: str | None) -> tuple[LLMClient, str] | None:
+def _provider(snapshot: RunSnapshot, llm: LLMClient | None,
+              model: str | None) -> tuple[LLMClient, str] | None:
     """Select one server-side provider; never fall back after a failure."""
     if llm is not None or model is not None:
         # Explicit injection preserves the deterministic test/integration path.
-        label = model if model is not None else os.environ.get("LLM_MODEL", "")
+        label = model if model is not None else snapshot.config.get("model", os.environ.get("LLM_MODEL", ""))
         return (llm or LiteLLMClient(), label) if label else None
+    config = snapshot.config
+    if "provider_path" in config or "provider" in config:
+        path, provider, label = (config.get(key) for key in ("provider_path", "provider", "model"))
+        if not isinstance(label, str) or not label:
+            return None
+        if path == "backend_cli" and provider in {"codex", "claude"}:
+            return HostCLIClient(provider), label
+        if path == "api" and provider == "litellm":
+            return LiteLLMClient(), label
+        return None
     choice = os.environ.get("RUNGUARD_MODEL_PROVIDER", "codex").strip().lower()
     if choice in {"codex", "claude"}:
         return HostCLIClient(choice), f"{choice}-cli"
@@ -153,7 +164,7 @@ def summarize(snapshot: RunSnapshot, *,
         page_text = prefix.rsplit(" ", 1)[0].rstrip() if " " in prefix else prefix
         emit("INPUT_TRUNCATED", "Readable page text truncated to input limit", "INFO")
     emit("TEXT_EXTRACTED", "Readable page text extracted", "INFO")
-    selected = _provider(llm, model)
+    selected = _provider(snapshot, llm, model)
     if selected is None:
         emit("LLM_REQUEST_FAILED", "Summarization provider unavailable", "ERROR")
         return HandlerOutcome(None, http_status=response.status,
