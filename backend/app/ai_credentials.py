@@ -99,6 +99,7 @@ class CredentialRepository:
                 session.add(AiCredentialRecord(owner_user_id=owner, provider=provider,
                                                ciphertext=ciphertext, updated_at=datetime.now(timezone.utc).isoformat()))
             else:
+                self._decrypt(row.ciphertext)
                 row.ciphertext = ciphertext
                 row.updated_at = datetime.now(timezone.utc).isoformat()
 
@@ -109,6 +110,9 @@ class CredentialRepository:
             if row is None:
                 return None
             ciphertext = row.ciphertext
+        return self._decrypt(ciphertext)
+
+    def _decrypt(self, ciphertext: str) -> str:
         try:
             return self._cipher().decrypt(ciphertext.encode("ascii")).decode("utf-8")
         except (InvalidToken, UnicodeError, ValueError, TypeError):
@@ -119,6 +123,9 @@ class CredentialRepository:
         with self.users.sessions.begin() as session:
             row = session.get(AiCredentialRecord, (owner, provider))
             if row is not None:
+                # Do not discard ciphertext that cannot be opened with the
+                # currently mounted installation key.
+                self._decrypt(row.ciphertext)
                 session.delete(row)
 
     def is_configured(self, owner: str, provider: str) -> bool:

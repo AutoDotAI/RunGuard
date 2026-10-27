@@ -97,6 +97,10 @@ def test_restart_preserves_existing_data_and_missing_key_fails_closed(tmp_path):
             CredentialRepository(reopened, key_file).get(owner_a, "anthropic")
         assert "sk-ant" not in str(exc.value)
         with pytest.raises(CredentialUnavailable):
+            CredentialRepository(reopened, key_file).delete(owner_a, "anthropic")
+        with reopened.sessions() as session:
+            assert session.get(AiCredentialRecord, (owner_a, "anthropic")) is not None
+        with pytest.raises(CredentialUnavailable):
             ensure_model_key(reopened, model_dir)
         assert not key_file.exists()
     finally:
@@ -111,9 +115,18 @@ def test_wrong_key_and_invalid_input_fail_without_exposing_key(tmp_path):
     wrong_users, _, _, wrong_dir = setup(tmp_path / "other")
     wrong_key = wrong_dir / "model_encryption_key"
     try:
+        with users.sessions() as session:
+            original_ciphertext = session.get(AiCredentialRecord, (owner_a, "openai")).ciphertext
         with pytest.raises(CredentialUnavailable) as exc:
             CredentialRepository(users, wrong_key).get(owner_a, "openai")
         assert "sk-test-live" not in str(exc.value)
+        with pytest.raises(CredentialUnavailable):
+            CredentialRepository(users, wrong_key).put(owner_a, "openai", "sk-test-replacement-456")
+        with pytest.raises(CredentialUnavailable):
+            CredentialRepository(users, wrong_key).delete(owner_a, "openai")
+        with users.sessions() as session:
+            assert session.get(AiCredentialRecord, (owner_a, "openai")).ciphertext == original_ciphertext
+        assert repo.get(owner_a, "openai") == "sk-test-live-secret-123"
         key_file.write_bytes(wrong_key.read_bytes())
         with pytest.raises(CredentialUnavailable):
             ensure_model_key(users, model_dir)
