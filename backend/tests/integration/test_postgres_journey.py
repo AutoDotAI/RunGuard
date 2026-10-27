@@ -83,6 +83,9 @@ def _logs(client, headers, run_id):
 
 def test_postgres_full_journey_two_workers_alert_retry_and_restart(postgres_url):
     calls = []
+    # A CI runner has no host CLI login. Advertise the injected fake model as
+    # an available worker capability so enqueue still exercises the real gate.
+    fake_capabilities = lambda: {"providers": ["codex"]}
     page = outbound.FetchResponse(200, {"Content-Type": "text/html"},
         b"<title>Recovery report</title><article><p>" +
         b"Operators detected the issue, restored service, and reviewed impact. " * 3 +
@@ -110,11 +113,13 @@ def test_postgres_full_journey_two_workers_alert_retry_and_restart(postgres_url)
         def fail_monitor(snapshot):
             return monitor(snapshot, fetch=lambda _url: outbound.FetchResponse(503, {}, b"down"))
 
-        with WorkerRunner(postgres_url, {"website_monitor": fail_monitor}) as runner:
+        with WorkerRunner(postgres_url, {"website_monitor": fail_monitor},
+                          capability_reporter=fake_capabilities) as runner:
             assert runner.run_once()
         assert _run(client, alice, first_id)["error"]["code"] == "HTTP_STATUS_ERROR"
         second_id = _enqueue(client, alice, monitor_id)
-        with WorkerRunner(postgres_url, {"website_monitor": fail_monitor}) as runner:
+        with WorkerRunner(postgres_url, {"website_monitor": fail_monitor},
+                          capability_reporter=fake_capabilities) as runner:
             assert runner.run_once()
         assert _run(client, alice, second_id)["status"] == "failed"
         alerts = client.get(f"{API}/alerts", headers=alice)
@@ -129,14 +134,15 @@ def test_postgres_full_journey_two_workers_alert_retry_and_restart(postgres_url)
         retry_id = retry_response.json()["run_id"]
         assert _run(client, alice, retry_id)["retry_of_run_id"] == first_id
         with WorkerRunner(postgres_url, {"website_monitor": lambda snapshot:
-                monitor(snapshot, fetch=lambda _url: outbound.FetchResponse(200, {}, b"ok"))}) as runner:
+                monitor(snapshot, fetch=lambda _url: outbound.FetchResponse(200, {}, b"ok"))},
+                capability_reporter=fake_capabilities) as runner:
             assert runner.run_once()
         assert _run(client, alice, retry_id)["status"] == "succeeded"
         assert _logs(client, alice, retry_id)[-1]["event"] == "RUN_SUCCEEDED"
         assert client.get(f"{API}/alerts", headers=alice).json()["items"][0]["status"] == "resolved"
 
         summary_run = _enqueue(client, alice, summary_id)
-        with WorkerRunner(postgres_url) as runner:
+        with WorkerRunner(postgres_url, capability_reporter=fake_capabilities) as runner:
             runner.handlers["url_summarizer"] = lambda snapshot: summarize(
                 snapshot, fetch=lambda _url: page, llm=FakeModel(), model="fake/model",
                 log=lambda event, message, level: runner._monitor_step(

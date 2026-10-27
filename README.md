@@ -64,6 +64,21 @@ check database restart persistence. `make compose-smoke` exercises a real
 API→worker journey and contacts `example.com`; offline backend tests use fake
 HTTP and model adapters. No command in this repository deploys publicly.
 
+The [CI workflow](.github/workflows/ci.yml) runs the backend suite against a
+temporary PostgreSQL 16 service, then checks the PostgreSQL integration files
+explicitly so they cannot pass by skipping for a missing database URL. To run
+the same database checks locally, supply a **disposable** PostgreSQL database
+URL (each test creates and drops only its own uniquely named schema):
+
+```bash
+make install-backend
+RUNGUARD_TEST_POSTGRES_URL='postgresql+psycopg://USER:PASSWORD@127.0.0.1:PORT/TEST_DB' make test-postgres
+```
+
+`make test-backend` runs the full backend suite, and `make test-frontend` runs
+the React tests. CI also runs TypeScript checking and builds both images; it
+uses fake HTTP/model clients and needs no provider API key or CLI login.
+
 The source frontend runs with `cd frontend && npm ci --no-audit --no-fund &&
 npm run dev`; copy `frontend/.env.example` to `frontend/.env.local` to reach
 an API on port 8000. The source backend runs from `backend/` after `uv sync
@@ -72,6 +87,24 @@ PostgreSQL URL and a stable `RUNGUARD_AUTH_SECRET`: `uv run alembic upgrade
 head`, then `uv run uvicorn app.main:app --host 127.0.0.1 --port 8000`. Run
 `uv run python -m app.workers.runner` in another terminal with the same
 settings. The [backend guide](backend/README.md) explains API behavior.
+
+## Local data recovery
+
+The historical SQLite volume is backed up and imported **offline** before
+using its old accounts with PostgreSQL. The exact read-only volume backup and
+guarded import steps are in [local recovery](docs/local-recovery.md); the
+normal site must remain stopped during that import. After PostgreSQL is in
+use, a private dump and a practice restore into a *new* local database are:
+
+```bash
+ARCHIVE_PATH=private-backups/runguard-pg.dump make postgres-backup
+ARCHIVE_PATH=private-backups/runguard-pg.dump RESTORE_DB=runguard_restore_check make postgres-restore
+make postgres-recovery-smoke
+```
+
+These Make targets require the configured PostgreSQL service. Keep the
+original SQLite volume and stable signing secret; data written after cutover
+is absent from that old snapshot.
 
 ## Observability and incidents
 
