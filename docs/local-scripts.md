@@ -16,7 +16,7 @@ acts on the already running local project and adds test records.
 | `observability_smoke.py` | `make observability-smoke` | Check telemetry and user-impact alerts in the selected Compose project. It creates a test account and briefly stops that project's worker; use a disposable project for a clean run. |
 | `postgres_compose_smoke.py` | `make postgres-smoke`, container CI | Check isolated PostgreSQL health and persistence across restart. |
 | `postgres_recovery_smoke.py` | `make postgres-recovery-smoke` | Check disposable dump/restore plus historical login and run/log reads. |
-| `responder_smoke.py` | `make responder-smoke`, `docs/observability.md` | Create an isolated alert fixture and verify the optional responder package records one bounded audited recovery. It is an integration caller, not the responder policy. |
+| `responder_smoke.py` | `make responder-smoke`, `docs/observability.md` | Create an isolated alert fixture and verify the optional [incident-response package](https://github.com/AutoDotAI/incident-response) records one bounded audited recovery. It is an integration caller, not the responder policy. |
 
 `postgres_network_smoke.py` was removed because it had no caller. Its checks
 remain covered by the no-`.env` first-run smoke, the isolated PostgreSQL smoke,
