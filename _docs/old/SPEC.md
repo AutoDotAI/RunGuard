@@ -1010,7 +1010,7 @@ Use this as the initial brief in Lovable (then provide this complete spec):
 4. Authenticate as User A, create worker, then authenticate as User B; all cross-tenant reads/writes/retries return 404 or omit records.
 5. Stop worker; enqueue job; verify queued persists; restart worker; verify execution proceeds.
 6. Kill worker mid-run, restart; verify orphaned running job is marked failed, not invisibly re-executed.
-7. Restart API/worker with the same persisted SQLite volume; workers and runs remain.
+7. Restart API/worker with the same persistent PostgreSQL volume; workers and runs remain. The old SQLite volume stays retained as a recovery source.
 8. Repeated clicks on Run Now cannot create two active jobs for the same worker.
 
 ### 12.3 Frontend/e2e tests
@@ -1027,9 +1027,9 @@ Use this as the initial brief in Lovable (then provide this complete spec):
 # From repository root with Docker Compose; a fresh clone needs no .env
 
 docker compose up --build -d
-# Live web + API + worker using same SQLite volume
+# Live web + API + worker using the same persistent PostgreSQL volume
 
-# Tests
+# Optional developer tests (host Python/Node are not needed to use the site)
 cd backend && python -m pytest -q
 cd frontend && npm test -- --run
 # E2E (if implemented): cd frontend && npx playwright test
