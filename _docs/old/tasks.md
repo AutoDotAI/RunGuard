@@ -215,3 +215,15 @@ Description: Bootstrap unique, persistent local database and JWT secrets through
 ## 56. Offer a no-key local Summarizer demo
 Goal: Let a fresh local user try URL Summarizer after `docker compose up --build` without an AI login, API key, or model download.
 Description: Add an explicitly labeled deterministic extractive demo provider to OpenAPI, backend settings/worker dispatch, and the AI settings page; use the existing bounded HTML fetch and security checks, then save a result marked “local demo — no AI model.” Test a fresh signup-to-summary journey with fake HTTP, honest catalog/result labels, PDF and oversized failures before summary generation, immutable retry snapshots, and preservation of existing users' real-provider choices; never silently fall back from Codex, Claude, or LiteLLM.
+
+## 57. Publish the bounded responder in its own repository
+Goal: Put the incident-response policy and CLI in a public `AutoDotAI/incident-response` Python package.
+Description: Extract RunGuard's fixed-inspection diagnosis and demo-only action decision into a package with a small storage/action adapter interface, and add fake-adapter tests for ownership, duplicate alerts, sanitized evidence, action denial, and audited demo recovery. Publish the repository under AutoDotAI with exact install and test commands; keep RunGuard database models, secrets, and CLI login material out of the package and do not change the normal website startup.
+
+## 58. Integrate the external responder with RunGuard
+Goal: Keep the existing local alert-to-recovery drill working from a clean RunGuard clone using the separate responder package.
+Description: Replace the in-repo responder policy with a small PostgreSQL/demo-control adapter and pin the external package to an immutable revision or image digest in the optional responder profile; normal `docker compose up --build` must not fetch or build that optional dependency. Update imports, tests, Makefile, and documentation, then verify incident/audit persistence, owned-alert isolation, one demo-only `resume_demo_worker`, no automatic user-job retry, and a disposable PostgreSQL responder smoke without exposing credentials or changing retained user data.
+
+## 59. Prune unused local helper scripts
+Goal: Keep one documented owner and a verified caller for each local smoke or recovery script.
+Description: Inventory the nine current `scripts/` files after task #58 moves the responder drill; `postgres_network_smoke.py` currently has no Makefile, CI, documentation, or test caller. Remove a script only when its behavior is covered elsewhere or add a justified verified caller, then update Makefile/docs/CI references and run the affected local checks without deleting backup, PostgreSQL, observability, or security coverage.
