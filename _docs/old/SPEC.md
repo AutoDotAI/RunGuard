@@ -55,6 +55,16 @@
 > [issue #34](https://github.com/AutoDotAI/RunGuard/issues/34); do not build
 > or maintain deployment machinery for the current local milestone.
 
+> **First-run local usability amendment — 2026-10-27:** A fresh local clone
+> must start with `docker compose up --build` without asking the owner to
+> export secrets, database URLs, demo flags, or model credentials. The normal
+> site must offer a truthful, no-key way to sign up and run Website Monitor.
+> This supersedes manual `.env` setup as a prerequisite for a fresh local Compose
+> start; existing ignored configuration and imported PostgreSQL data must be
+> preserved. URL Summarizer still requires an available provider until its
+> separate no-key experience is approved; containers cannot infer host CLI
+> subscription credentials.
+
 ### Current acceptance target for the storage change
 
 - PostgreSQL 16+ is the **default** database for API, worker, migrations,
@@ -111,6 +121,30 @@
   supported files. Retire deployment-only scripts and workflows while
   retaining useful local migration, backup, security probe, and smoke-test
   commands. Do not remove stored SQLite data.
+
+### Current acceptance target for a fresh local start
+
+- From a clean checkout with Docker Compose and the documented free local
+  ports, `docker compose up --build` starts healthy PostgreSQL, migrations,
+  API, one worker, and web without a pre-created `.env` or manually exported
+  variables. Generate unique authentication and database secrets in private,
+  ignored local state and keep them stable across restart/recreate; never
+  commit, log, or return them to the browser. An existing `.env` and existing
+  PostgreSQL volume take precedence, so upgrading this project cannot replace
+  its current signing secret, password, accounts, or run history. If an
+  existing volume cannot be opened with its saved credential, fail clearly
+  rather than initializing over it. Compose parses variables before containers
+  start: use an initialization secret volume, password files, and runtime
+  configuration (or an equally safe mechanism) rather than a fixed shared
+  default password or signing key. Keep published ports loopback-only.
+- A fresh user can sign up, log in, create and run a Website Monitor, and
+  inspect logs. The AI settings page must report URL Summarizer availability
+  truthfully; it cannot claim a runnable Codex/Claude subscription or
+  LiteLLM API route when none is configured. Preserve these explicitly
+  configured real-model options without mounting host CLI credentials into
+  containers. Document the one-command start and optional real-model setup
+  accurately, and test both a fresh no-config start and a restart over the
+  already imported PostgreSQL data.
 
 ### Current acceptance target for AI configuration and workers
 
