@@ -251,3 +251,7 @@ Description: Keep all four paths visible and clickable even when a real provider
 ## 65. Send Compose browser API requests through the web origin
 Goal: Make signup and worker creation work from the site address without requiring the browser to reach a separate API port.
 Description: In the Compose build, use a same-origin `/api/v1/*` path and have the Node web server forward that fixed prefix to the internal API service while preserving methods, bearer headers, bodies, and responses; return a sanitized 502 when the upstream is unavailable. Keep the regular Lovable/Vite development API configuration, avoid a general-purpose proxy or extra Compose file, and verify signup plus worker creation from `127.0.0.1:3000` and a forwarded-site scenario in isolated tests without changing retained user data.
+
+## 66. Add a local incident-response operator folder
+Goal: Give a RunGuard checkout runnable one-shot and watch commands for its pinned bounded responder.
+Description: Add `incident-response/` with a README and a small executable entrypoint that invokes the existing optional Compose responder on persisted open alerts once or serially at a bounded interval until stopped. Keep the responder policy in `AutoDotAI/incident-response`, preserve PostgreSQL deduplication and demo-only action limits, and test command construction and stopping with fake Docker plus the existing disposable responder drill; normal Compose startup must not require the optional image or host runtimes.

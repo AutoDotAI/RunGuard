@@ -95,6 +95,12 @@ control. The bounded responder below uses this same gate.
 
 ### Bounded local responder
 
+The [local incident-response folder](../incident-response/README.md) provides
+`./incident-response/run.sh once` and `./incident-response/run.sh watch`
+operator commands for scanning persisted open alerts. Watch mode invokes one
+responder scan at a time; the pinned package and PostgreSQL records deduplicate
+incidents and actions. Neither command is required for normal Compose startup.
+
 The responder policy and CLI live in the separate public
 `AutoDotAI/incident-response` package pinned to a tested commit in the
 optional responder image. RunGuard supplies its PostgreSQL/demo-control

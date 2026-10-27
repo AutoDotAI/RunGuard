@@ -140,7 +140,8 @@ The optional responder image installs the policy and CLI from the pinned
 [AutoDotAI/incident-response](https://github.com/AutoDotAI/incident-response)
 package. Its automatic action is limited to resuming its isolated demo worker;
 it never retries a user's failed run. Normal `docker compose up --build`
-does not build or install that optional package.
+does not build or install that optional package. To scan open alerts once or
+watch them locally, use the [incident-response launcher](incident-response/README.md).
 
 For optional read-only host Codex/Claude analysis of an owned open incident,
 see [incident investigation](docs/incident-ai.md). No CLI login or API key is
