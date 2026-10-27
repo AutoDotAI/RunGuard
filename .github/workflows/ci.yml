@@ -77,6 +77,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build API and worker image
         run: docker build -t runguard-api:ci ./backend
+      - name: Build optional pinned responder image
+        run: docker build -f backend/Dockerfile.responder -t runguard-responder:ci ./backend
+      - name: Check external responder CLI in optional image
+        run: docker run --rm runguard-responder:ci incident-response --help
       - name: Build web image
         run: docker build -t runguard-web:ci ./frontend
       - name: Validate local Compose configuration

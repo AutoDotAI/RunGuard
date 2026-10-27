@@ -1,0 +1,16 @@
+# Built only by the optional responder Compose profile. Normal site images
+# install no external incident-response package.
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_LINK_MODE=copy
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir uv==0.9.8
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project --extra responder
+COPY alembic.ini ./
+COPY alembic ./alembic
+COPY app ./app
+ENV PATH="/app/.venv/bin:${PATH}" PYTHONPATH=/app
+RUN mkdir -p /data && chown -R 10001:10001 /data
+USER 10001:10001

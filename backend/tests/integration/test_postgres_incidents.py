@@ -11,15 +11,15 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 
 from app import observability
 from app.alerting import AlertService, stamp
 from app.db import AlertRecord, IncidentRecord, ResponderActionRecord, RunRecord, UserRepository, WorkerRecord
-from app.demo_worker import DemoControl, DemoDenied
+from app.demo_worker import DemoControl, DemoDenied, DemoWorkerRunner
 from app.incident_ai import IncidentAI
-from app.responder import Responder
+from app.responder_adapter import RunGuardResponder as Responder
 
 
 NOW = datetime(2026, 10, 26, 12, 0, tzinfo=timezone.utc)
@@ -147,5 +147,103 @@ def test_pg_demo_control_is_persisted_and_restricted(postgres_url, monkeypatch):
         assert control.cleanup() is None
         assert control.status() is None
     finally:
+        control.close()
+        users.close()
+
+
+def test_external_responder_pg_demo_recovery_is_owned_audited_and_idempotent(
+        postgres_url, monkeypatch):
+    monkeypatch.setenv("RUNGUARD_DEMO_MODE", "true")
+    monkeypatch.setenv("RUNGUARD_DEMO_PROJECT", "rg-demo-external-pg")
+    monkeypatch.setenv("RUNGUARD_COMPOSE_PROJECT", "rg-demo-external-pg")
+    monkeypatch.delenv("RUNGUARD_PUBLIC_MODE", raising=False)
+    users = UserRepository(postgres_url)
+    users.migrate()
+    owner = users.create("owner@example.test", "hashed-password", stamp(NOW))["id"]
+    other = users.create("other@example.test", "hashed-password", stamp(NOW))["id"]
+    control = DemoControl(postgres_url)
+    try:
+        control.pause()
+        run_id = add_run(users, owner, "queued",
+                         created=datetime.now(timezone.utc) - timedelta(seconds=70))
+        assert control.bind(run_id)["run_id"] == run_id
+        assert AlertService(users).evaluate()["worker_queue_stalled"] == 1
+        with users.sessions() as session:
+            alert = session.scalar(select(AlertRecord).where(AlertRecord.run_id == run_id))
+            assert alert is not None and alert.status == "open"
+            alert_id = alert.id
+
+        assert Responder(users).respond(alert_id, other) is None
+        calls = []
+
+        def advance(_delay):
+            if not calls:
+                with DemoWorkerRunner(postgres_url) as runner:
+                    assert runner.run_once()
+                calls.append(True)
+
+        incident = Responder(users, recovery_timeout=3, sleep=advance).respond(alert_id, owner)
+        assert incident["status"] == "recovered"
+        assert incident["action"]["action"] == "resume_demo_worker"
+        assert incident["action"]["decision"] == "executed"
+        assert incident["action"]["result"] == "recovered"
+        assert incident["action"]["before_status"] == "queued"
+        assert incident["action"]["after_status"] == "succeeded"
+        assert incident["evidence"]["inspection_names"] == [
+            "get_worker_health", "get_failed_run", "get_recent_errors", "get_queue_depth"]
+        assert incident["evidence"]["log_ids"]
+        assert Responder(users).respond(alert_id, owner) == incident
+        users.close()
+        reopened = UserRepository(postgres_url)
+        try:
+            assert Responder(reopened).respond(alert_id, owner) == incident
+            with reopened.sessions() as session:
+                assert session.scalar(select(func.count()).select_from(IncidentRecord)) == 1
+                assert session.scalar(select(func.count()).select_from(ResponderActionRecord)) == 1
+                assert session.scalar(select(func.count()).select_from(RunRecord).where(
+                    RunRecord.retry_of_run_id.is_not(None))) == 0
+        finally:
+            reopened.close()
+    finally:
+        control.cleanup()
+        control.close()
+        users.close()
+
+
+def test_external_responder_pg_rejects_unbound_demo_run(postgres_url, monkeypatch):
+    monkeypatch.setenv("RUNGUARD_DEMO_MODE", "true")
+    monkeypatch.setenv("RUNGUARD_DEMO_PROJECT", "rg-demo-external-pg")
+    monkeypatch.setenv("RUNGUARD_COMPOSE_PROJECT", "rg-demo-external-pg")
+    monkeypatch.delenv("RUNGUARD_PUBLIC_MODE", raising=False)
+    users = UserRepository(postgres_url)
+    users.migrate()
+    owner = users.create("owner@example.test", "hashed-password", stamp(NOW))["id"]
+    other = users.create("other@example.test", "hashed-password", stamp(NOW))["id"]
+    control = DemoControl(postgres_url)
+    try:
+        control.pause()
+        run_id = add_run(users, owner, "queued",
+                         created=datetime.now(timezone.utc) - timedelta(seconds=70))
+        control.bind(run_id)
+        unrelated = add_run(users, other, "queued",
+                            created=datetime.now(timezone.utc) - timedelta(seconds=70))
+        assert unrelated != run_id
+        assert AlertService(users).evaluate()["worker_queue_stalled"] >= 1
+        with users.sessions() as session:
+            alert = session.scalar(select(AlertRecord).where(
+                AlertRecord.run_id == run_id, AlertRecord.status == "open"))
+            assert alert is not None
+            alert_id = alert.id
+        denied = Responder(users).respond(alert_id, owner)
+        assert denied["action"]["decision"] == "action_denied"
+        assert denied["action"]["reason"] == "demo_binding_mismatch"
+        assert denied["action"]["result"] == "not_run"
+        assert control.state()["status"] == "paused"
+        assert Responder(users).respond(alert_id, owner) == denied
+        with users.sessions() as session:
+            assert session.scalar(select(func.count()).select_from(RunRecord).where(
+                RunRecord.retry_of_run_id.is_not(None))) == 0
+    finally:
+        control.cleanup()
         control.close()
         users.close()
