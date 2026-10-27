@@ -17,6 +17,7 @@ from sqlalchemy import select, text
 from app.db import RunRecord, UserRepository
 from app.models import MonitorResult, SummarizerResult
 from app.outbound import allowed_public_hosts
+from app.provider_config import configured_litellm_models, has_model_credential
 from app.run_logs import new_run_log, safe_event
 from app.store import now
 from app import observability
@@ -70,11 +71,8 @@ def _worker_capabilities() -> dict[str, list[str]]:
             continue
         if result.returncode == 0:
             providers.append(name)
-    configured_models = (os.environ.get("RUNGUARD_LITELLM_MODELS", "").strip()
-                         or os.environ.get("LLM_MODEL", "").strip())
-    if configured_models and any(os.environ.get(key) for key in (
-            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY",
-            "GOOGLE_API_KEY", "AZURE_API_KEY")):
+    if any(has_model_credential(model, os.environ)
+           for model in configured_litellm_models(os.environ)):
         providers.append("litellm")
     return {"providers": providers}
 

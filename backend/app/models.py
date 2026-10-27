@@ -41,6 +41,34 @@ class Health(StrictModel):
     status: Literal["ok", "unavailable"]
 
 
+class AiModel(StrictModel):
+    id: str = Field(min_length=1, max_length=160)
+    label: str = Field(min_length=1, max_length=160)
+
+
+class AiProvider(StrictModel):
+    provider_path: Literal["backend_cli", "api"]
+    provider: Literal["codex", "claude", "litellm"]
+    label: str
+    available: bool
+    unavailable_reason: str | None
+    models: list[AiModel]
+
+
+class AiProviderCatalog(StrictModel):
+    providers: list[AiProvider]
+
+
+class AiSettingsInput(StrictModel):
+    provider_path: Literal["backend_cli", "api"]
+    provider: Literal["codex", "claude", "litellm"]
+    model: str = Field(min_length=1, max_length=160)
+
+
+class AiSettings(AiSettingsInput):
+    available: bool
+
+
 class WorkerCreate(StrictModel):
     name: str = Field(min_length=1, max_length=80)
     kind: WorkerKind

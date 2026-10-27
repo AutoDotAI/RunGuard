@@ -24,6 +24,16 @@ class UserRecord(Base):
     created_at: Mapped[str] = mapped_column(String(35), nullable=False)
 
 
+class AiSettingsRecord(Base):
+    __tablename__ = "ai_settings"
+
+    owner_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), primary_key=True)
+    provider_path: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    model: Mapped[str] = mapped_column(String(160), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(35), nullable=False)
+
+
 class WorkerRecord(Base):
     __tablename__ = "workers"
 
