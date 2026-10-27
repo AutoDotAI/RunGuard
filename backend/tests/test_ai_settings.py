@@ -99,24 +99,22 @@ def test_stale_heartbeat_does_not_offer_cli(tmp_path, monkeypatch):
     assert next(p for p in app.state.ai_settings.catalog().providers if p.provider == "codex").available is True
 
 
-def test_litellm_requires_worker_and_credential_for_allowlisted_model(tmp_path, monkeypatch):
+def test_litellm_requires_account_credential_even_with_server_key(tmp_path, monkeypatch):
     app = _app(tmp_path, monkeypatch)
-    monkeypatch.setenv("RUNGUARD_LITELLM_MODELS", "openai/gpt-4o-mini")
     app.state.ai_settings.capability_reader = lambda: {"litellm"}
     with TestClient(app) as client:
         token = _register(client, "api@example.com")
-        choice = {"provider_path": "api", "provider": "litellm", "model": "openai/gpt-4o-mini"}
+        choice = {"provider_path": "api", "provider": "litellm", "model": "openai/gpt-4.1-mini"}
         unavailable = client.put("/api/v1/ai/settings", json=choice, headers=_headers(token))
         assert unavailable.status_code == 409
         monkeypatch.setenv("OPENAI_API_KEY", "never-return-this-key")
         saved = client.put("/api/v1/ai/settings", json=choice, headers=_headers(token))
-        assert saved.status_code == 200
-        assert saved.json() == {**choice, "available": True}
+        assert saved.status_code == 409
         assert "never-return-this-key" not in saved.text
         assert "never-return-this-key" not in client.get("/api/v1/ai/providers", headers=_headers(token)).text
 
 
-def test_litellm_catalog_filters_models_without_matching_credentials(tmp_path, monkeypatch):
+def test_litellm_catalog_offers_only_approved_models_without_account_key(tmp_path, monkeypatch):
     app = _app(tmp_path, monkeypatch)
     app.state.ai_settings.capability_reader = lambda: {"litellm"}
     monkeypatch.setenv("RUNGUARD_LITELLM_MODELS", "openai/gpt-4o-mini,anthropic/claude-3-haiku")
@@ -126,8 +124,9 @@ def test_litellm_catalog_filters_models_without_matching_credentials(tmp_path, m
         token = _register(client, "mixed@example.com")
         providers = client.get("/api/v1/ai/providers", headers=_headers(token)).json()["providers"]
         api = next(provider for provider in providers if provider["provider"] == "litellm")
-        assert api["available"] is True
-        assert [model["id"] for model in api["models"]] == ["openai/gpt-4o-mini"]
+        assert api["available"] is False
+        assert [model["id"] for model in api["models"]] == [
+            "openai/gpt-4.1-mini", "anthropic/claude-sonnet-4-6"]
         unavailable_model = {"provider_path": "api", "provider": "litellm",
                              "model": "anthropic/claude-3-haiku"}
         result = client.put("/api/v1/ai/settings", json=unavailable_model, headers=_headers(token))
@@ -135,7 +134,7 @@ def test_litellm_catalog_filters_models_without_matching_credentials(tmp_path, m
         assert result.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_worker_and_catalog_agree_on_nondefault_api_credential(tmp_path, monkeypatch):
+def test_worker_heartbeat_alone_does_not_unlock_account_api_choice(tmp_path, monkeypatch):
     app = _app(tmp_path, monkeypatch)
     monkeypatch.delenv("RUNGUARD_MODEL_PROVIDER", raising=False)
     monkeypatch.setenv("RUNGUARD_LITELLM_MODELS", "groq/llama-3.3-70b-versatile")
@@ -146,5 +145,6 @@ def test_worker_and_catalog_agree_on_nondefault_api_credential(tmp_path, monkeyp
     app.state.ai_settings.capability_reader = lambda: set(capability["providers"])
     api = next(provider for provider in app.state.ai_settings.catalog().providers
                if provider.provider == "litellm")
-    assert api.available is True
-    assert [model.id for model in api.models] == ["groq/llama-3.3-70b-versatile"]
+    assert api.available is False
+    assert [model.id for model in api.models] == [
+        "openai/gpt-4.1-mini", "anthropic/claude-sonnet-4-6"]

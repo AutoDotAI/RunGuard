@@ -8,10 +8,10 @@ from typing import Callable
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from .ai_credentials import CredentialRepository, CredentialUnavailable
 from .db import AiSettingsRecord, UserRepository
 from .models import AiModel, AiProvider, AiProviderCatalog, AiSettings, AiSettingsInput
-from .provider_config import (DEMO_LABEL, DEMO_MODEL, MODEL_ID,
-                              configured_litellm_models, has_model_credential)
+from .provider_config import DEMO_LABEL, DEMO_MODEL, MODEL_ID, SELF_SERVICE_API_MODELS
 from .store import Problem
 
 
@@ -37,9 +37,11 @@ def _models(value: str | None, *, include_default: bool = False) -> list[AiModel
 
 class AiSettingsService:
     def __init__(self, users: UserRepository, *,
+                 credentials: CredentialRepository | None = None,
                  capability_reader: Callable[[], set[str]] | None = None,
                  environ: dict[str, str] | None = None):
         self.users = users
+        self.credentials = credentials or CredentialRepository(users)
         self.capability_reader = capability_reader or self._connected_providers
         self.environ = environ
 
@@ -60,19 +62,28 @@ class AiSettingsService:
         except (SQLAlchemyError, ValueError, TypeError, AttributeError):
             return set()
 
-    def catalog(self) -> AiProviderCatalog:
+    def _credential_ready(self, owner: str, provider: str) -> bool:
+        try:
+            return self.credentials.is_configured(owner, provider)
+        except CredentialUnavailable:
+            raise Problem(503, "CREDENTIAL_UNAVAILABLE", "Credential storage is unavailable.") from None
+
+    def _model_key_available(self, owner: str | None, model: str) -> bool:
+        if owner is None:
+            return False
+        return any(model in models and self._credential_ready(owner, provider)
+                   for provider, models in SELF_SERVICE_API_MODELS.items())
+
+    def catalog(self, owner: str | None = None) -> AiProviderCatalog:
         environ = self.environ if self.environ is not None else os.environ
         connected = self.capability_reader()
         codex = _models(environ.get("RUNGUARD_CODEX_MODELS"), include_default=True)
         claude = _models(environ.get("RUNGUARD_CLAUDE_MODELS"), include_default=True)
-        configured_api_models = [AiModel(id=model, label=model)
-                                 for model in configured_litellm_models(environ)]
-        credentialed_api_models = [item for item in configured_api_models
-                                   if has_model_credential(item.id, environ)]
-        # The schema has availability at provider level, so do not advertise
-        # a model that this server cannot authenticate while another works.
-        api_models = credentialed_api_models or configured_api_models
-        api_has_key = bool(credentialed_api_models)
+        api_models = [AiModel(id=model, label=model.removeprefix(f"{provider}/"))
+                      for provider, models in SELF_SERVICE_API_MODELS.items()
+                      for model in models]
+        api_has_key = any(self._credential_ready(owner, provider)
+                          for provider in SELF_SERVICE_API_MODELS) if owner else False
         providers = [AiProvider(provider_path="local_demo", provider="extractive",
                                 label=DEMO_LABEL, available="extractive" in connected,
                                 unavailable_reason=(None if "extractive" in connected else
@@ -88,10 +99,10 @@ class AiSettingsService:
         api_available = "litellm" in connected and api_has_key
         api_reason = None
         if not api_available:
-            api_reason = ("No server-side model credential is configured."
+            api_reason = ("Add an OpenAI or Anthropic API key."
                           if not api_has_key else "LiteLLM worker is not connected.")
         providers.append(AiProvider(provider_path="api", provider="litellm",
-                                    label="LiteLLM API", available=api_available,
+                                    label="API key — OpenAI / Anthropic", available=api_available,
                                     unavailable_reason=api_reason, models=api_models))
         return AiProviderCatalog(providers=providers)
 
@@ -101,17 +112,20 @@ class AiSettingsService:
             selection = (AiSettingsInput(provider_path=row.provider_path, provider=row.provider,
                                          model=row.model) if row else
                          AiSettingsInput(provider_path="local_demo", provider="extractive", model=DEMO_MODEL))
-        entry = next((entry for entry in self.catalog().providers
+        entry = next((entry for entry in self.catalog(owner).providers
                       if entry.provider_path == selection.provider_path and entry.provider == selection.provider), None)
         available = bool(entry and entry.available and any(model.id == selection.model for model in entry.models))
+        if selection.provider_path == "api":
+            available = available and self._model_key_available(owner, selection.model)
         return AiSettings(**selection.model_dump(), available=available)
 
     def put(self, owner: str, selection: AiSettingsInput) -> AiSettings:
-        entry = next((entry for entry in self.catalog().providers
+        entry = next((entry for entry in self.catalog(owner).providers
                       if entry.provider_path == selection.provider_path and entry.provider == selection.provider), None)
         if entry is None or not any(model.id == selection.model for model in entry.models):
             raise Problem(422, "VALIDATION_ERROR", "Unsupported provider or model.")
-        if not entry.available:
+        if not entry.available or (selection.provider_path == "api" and
+                                   not self._model_key_available(owner, selection.model)):
             raise Problem(409, "PROVIDER_UNAVAILABLE", "Selected provider is unavailable.")
         with self.users.sessions.begin() as session:
             session.execute(text("INSERT INTO ai_settings "
