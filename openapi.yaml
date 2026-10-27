@@ -351,7 +351,9 @@ paths:
       summary: List backend-approved summary providers and models
       description: >-
         Requires a bearer token. Availability reflects the currently active
-        worker and the authenticated account's configured API credentials; the browser must not infer it
+        worker, the authenticated account's API credentials, or an explicitly
+        configured additional server model and credential. The two built-in
+        self-service model IDs always require the account's own key. The browser must not infer it
         from a static model list. Unavailable entries remain visible but cannot
         be saved as a runnable choice. The local extractive demo is explicitly
         labeled as using no AI model. No credential values are returned.

@@ -11,7 +11,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from .ai_credentials import CredentialRepository, CredentialUnavailable
 from .db import AiSettingsRecord, UserRepository
 from .models import AiModel, AiProvider, AiProviderCatalog, AiSettings, AiSettingsInput
-from .provider_config import DEMO_LABEL, DEMO_MODEL, MODEL_ID, SELF_SERVICE_API_MODELS
+from .provider_config import (DEMO_LABEL, DEMO_MODEL, MODEL_ID,
+                              SELF_SERVICE_API_MODELS, configured_litellm_models,
+                              has_model_credential)
 from .store import Problem
 
 
@@ -69,21 +71,32 @@ class AiSettingsService:
             raise Problem(503, "CREDENTIAL_UNAVAILABLE", "Credential storage is unavailable.") from None
 
     def _model_key_available(self, owner: str | None, model: str) -> bool:
-        if owner is None:
-            return False
-        return any(model in models and self._credential_ready(owner, provider)
-                   for provider, models in SELF_SERVICE_API_MODELS.items())
+        for provider, models in SELF_SERVICE_API_MODELS.items():
+            if model in models:
+                return owner is not None and self._credential_ready(owner, provider)
+        environ = self.environ if self.environ is not None else os.environ
+        return (model in configured_litellm_models(environ)
+                and has_model_credential(model, environ))
 
     def catalog(self, owner: str | None = None) -> AiProviderCatalog:
         environ = self.environ if self.environ is not None else os.environ
         connected = self.capability_reader()
         codex = _models(environ.get("RUNGUARD_CODEX_MODELS"), include_default=True)
         claude = _models(environ.get("RUNGUARD_CLAUDE_MODELS"), include_default=True)
-        api_models = [AiModel(id=model, label=model.removeprefix(f"{provider}/"))
-                      for provider, models in SELF_SERVICE_API_MODELS.items()
-                      for model in models]
-        api_has_key = any(self._credential_ready(owner, provider)
-                          for provider in SELF_SERVICE_API_MODELS) if owner else False
+        self_service_models = [AiModel(id=model, label=model.removeprefix(f"{provider}/"))
+                               for provider, models in SELF_SERVICE_API_MODELS.items()
+                               for model in models]
+        self_service_ids = {item.id for item in self_service_models}
+        configured_legacy = [model for model in configured_litellm_models(environ)
+                             if model not in self_service_ids]
+        credentialed_legacy = [model for model in configured_legacy
+                               if has_model_credential(model, environ)]
+        legacy_models = credentialed_legacy or configured_legacy
+        api_models = self_service_models + [AiModel(id=model, label=model)
+                                            for model in legacy_models]
+        api_has_key = bool(credentialed_legacy) or (any(
+            self._credential_ready(owner, provider) for provider in SELF_SERVICE_API_MODELS)
+            if owner else False)
         providers = [AiProvider(provider_path="local_demo", provider="extractive",
                                 label=DEMO_LABEL, available="extractive" in connected,
                                 unavailable_reason=(None if "extractive" in connected else
