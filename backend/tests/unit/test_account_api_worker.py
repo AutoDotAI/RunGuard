@@ -68,6 +68,26 @@ def test_missing_or_unreadable_key_fails_before_model_request(monkeypatch, failu
     assert "private-ciphertext-marker" not in str(result) + str(events)
 
 
+def test_self_service_model_never_falls_back_to_shared_server_key(monkeypatch):
+    monkeypatch.setenv("RUNGUARD_LITELLM_MODELS", "openai/gpt-4.1-mini")
+    monkeypatch.setenv("OPENAI_API_KEY", "shared-server-key")
+    calls = []
+    monkeypatch.setattr(LiteLLMClient, "complete", lambda _self, **kwargs:
+                        calls.append(kwargs) or SUMMARY)
+    snapshot = _snapshot("owner-a", "openai/gpt-4.1-mini")
+
+    present = summarize(snapshot, fetch=lambda _url: PAGE,
+                        credential_lookup=lambda _owner, _provider: "owner-a-key")
+    assert present.error_code is None
+    assert calls[0]["api_key"] == "owner-a-key"
+
+    removed = summarize(snapshot, fetch=lambda _url: PAGE,
+                        credential_lookup=lambda _owner, _provider: None)
+    assert removed.error_code == "MODEL_PROVIDER_UNAVAILABLE"
+    assert len(calls) == 1
+    assert "shared-server-key" not in str(present) + str(removed)
+
+
 @pytest.mark.parametrize("failure", [RuntimeError("private-api-key-marker"), TimeoutError("private-api-key-marker")])
 def test_provider_errors_are_terminal_and_sanitized(monkeypatch, failure):
     monkeypatch.setattr(LiteLLMClient, "complete", lambda _self, **_kwargs: (_ for _ in ()).throw(failure))
