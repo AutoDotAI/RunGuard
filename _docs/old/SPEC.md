@@ -58,12 +58,10 @@
 > **First-run local usability amendment — 2026-10-27:** A fresh local clone
 > must start with `docker compose up --build` without asking the owner to
 > export secrets, database URLs, demo flags, or model credentials. The normal
-> site must offer a truthful, no-key way to sign up and run Website Monitor.
+> site must offer a truthful, no-key way to sign up and try both worker types.
 > This supersedes manual `.env` setup as a prerequisite for a fresh local Compose
 > start; existing ignored configuration and imported PostgreSQL data must be
-> preserved. URL Summarizer still requires an available provider until its
-> separate no-key experience is approved; containers cannot infer host CLI
-> subscription credentials.
+> preserved. Containers cannot infer host CLI subscription credentials.
 
 ### Current acceptance target for the storage change
 
@@ -138,13 +136,35 @@
   configuration (or an equally safe mechanism) rather than a fixed shared
   default password or signing key. Keep published ports loopback-only.
 - A fresh user can sign up, log in, create and run a Website Monitor, and
-  inspect logs. The AI settings page must report URL Summarizer availability
+  inspect logs. The AI settings page must report provider availability
   truthfully; it cannot claim a runnable Codex/Claude subscription or
   LiteLLM API route when none is configured. Preserve these explicitly
   configured real-model options without mounting host CLI credentials into
   containers. Document the one-command start and optional real-model setup
   accurately, and test both a fresh no-config start and a restart over the
   already imported PostgreSQL data.
+
+### Current acceptance target for the no-key Summarizer demo
+
+- The normal Compose worker offers a local deterministic extractive summary
+  of bounded readable HTML with no CLI login, API key, model download, or
+  paid request. The provider catalog and AI settings page clearly identify
+  it as **local demo — no AI model**; stored run results and logs also label
+  it so a reviewer cannot mistake it for a Codex, Claude, or LiteLLM result.
+  A new local account may select this available path by default so a fresh
+  user can run both worker types after `docker compose up --build`.
+- Add this path to the OpenAPI agreement, backend validation, frontend types,
+  settings UI, and immutable per-run snapshot. Existing users' saved real
+  provider/model settings and historical run snapshots must not be replaced;
+  manual retry still uses the original snapshot and no hidden fallback to
+  demo occurs after a real provider fails. Apply the existing URL allowlist,
+  SSRF, redirect, response-size, extraction, timeout, ownership, and sanitized
+  log rules before the deterministic summarizer receives page text.
+- Codex/Claude host CLI and server-side LiteLLM remain selectable real-model
+  paths only when truly available. Tests must cover a fresh no-key Compose
+  API-to-worker demo journey, an explicit real-provider choice remaining
+  intact, unsupported/PDF/oversized input failing before summary generation,
+  and honest UI/result labels without live sites or paid calls in CI.
 
 ### Current acceptance target for AI configuration and workers
 
