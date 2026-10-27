@@ -177,6 +177,11 @@ def test_postgres_full_journey_two_workers_alert_retry_and_restart(postgres_url)
         assert _logs(client, alice, retry_id)[-1]["event"] == "RUN_SUCCEEDED"
         assert client.get(f"{API}/alerts", headers=alice).json()["items"][0]["status"] == "resolved"
 
+        # This journey injects a fake Codex model; select that real-provider
+        # snapshot explicitly now that fresh accounts default to the demo.
+        selected = client.put(f"{API}/ai/settings", headers=alice, json={
+            "provider_path": "backend_cli", "provider": "codex", "model": "default"})
+        assert selected.status_code == 200, selected.text
         summary_run = _enqueue(client, alice, summary_id)
         with WorkerRunner(postgres_url, capability_reporter=fake_capabilities) as runner:
             runner.handlers["url_summarizer"] = lambda snapshot: summarize(
