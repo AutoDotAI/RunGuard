@@ -25,6 +25,7 @@ MESSAGES = {
     "INPUT_TRUNCATED": "Readable page text truncated to input limit",
     "LLM_REQUEST_STARTED": "Requesting summary",
     "LLM_REQUEST_FAILED": "Summarization provider failed",
+    "MODEL_PROVIDER_UNAVAILABLE": "No model provider configured; use a host Codex or Claude worker, or configure LiteLLM",
     "LLM_RESPONSE_RECEIVED": "Summary received",
     "SUMMARY_SAVED": "Summary saved",
     "RUN_SUCCEEDED": "Run succeeded",
