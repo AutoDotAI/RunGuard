@@ -94,5 +94,5 @@ The launcher builds the optional responder image and uses the pinned [AutoDotAI/
 
 - The app is local only. Public deployment and CD are [deferred](https://github.com/AutoDotAI/RunGuard/issues/34).
 - Compose keeps generated PostgreSQL and JWT secrets in a private Docker volume and retains accounts and runs after restart. `make postgres-backup` and `make postgres-restore` support local recovery; see `make help` for the required arguments. Never commit `.env`, keys, or database dumps.
-- The existing Lovable frontend stays in `frontend/`; see [Lovable sync](_docs/lovable-sync.md).
+- The existing Lovable frontend stays in `frontend/`.
 - The approved scope is in the [specification](_docs/old/SPEC.md). Progress is tracked in [GitHub Issues](https://github.com/AutoDotAI/RunGuard/issues).
