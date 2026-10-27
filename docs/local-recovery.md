@@ -7,7 +7,18 @@ volume and the existing `.env` signing secret. Never use `docker compose down
 
 ## 1. Preserve the old SQLite data before import
 
-From the repository root, stop the normal project without deleting volumes:
+The old SQLite-era `.env` may contain only `RUNGUARD_AUTH_SECRET`. Compose now
+requires a PostgreSQL password even for `down` and `config`. From the repository
+root, add a **stable** password to that existing file before any Compose command.
+The helper preserves the auth secret, prints neither secret, and refuses a
+missing or invalid auth secret. Keep this `.env` for subsequent starts:
+
+```bash
+python3 scripts/ensure_local_postgres_env.py
+docker compose config --quiet
+```
+
+Then stop the normal project without deleting volumes:
 
 ```bash
 docker compose down
@@ -54,6 +65,8 @@ target and retains
 the source snapshot on failure. Keep the original volume even after successful
 verification. Keep the same `RUNGUARD_AUTH_SECRET` so existing bearer tokens
 and account sessions retain their expected signing key.
+Starting an empty PostgreSQL service is preparation, not proof that the old
+accounts were imported; verify restored login and history before using it.
 
 ## 2. Back up and restore PostgreSQL locally
 
