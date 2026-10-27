@@ -68,6 +68,25 @@
 > the optional incident-response repository; its responder profile remains
 > separate from the default Compose start.
 
+> **Self-service AI provider amendment — 2026-10-27:** After a clean
+> `docker compose up --build`, the AI settings page must show four clickable
+> setup paths: local demo, Codex CLI, Claude CLI, and API key. Clicking a path
+> opens its controls even when execution is unavailable; saving it as a
+> runnable choice still requires its worker or credential. A user may choose the
+> API path, enter their own OpenAI or Anthropic API key, and choose a supported
+> model without editing `.env` or restarting Compose. The key is submitted
+> over the authenticated local API, encrypted at rest with a unique
+> per-install key generated in the private Compose secrets volume, and scoped
+> to that account. The browser may hold the key only while the form is open;
+> it must never put it in local/session storage, URLs, logs, catalog or settings
+> responses. A missing key may keep API execution unavailable, but the API
+> choice and setup form must remain accessible. Codex and Claude choices also
+> remain visible and clickable; they explain how to connect a signed-in host
+> worker and cannot claim to run until that worker advertises capability.
+> This amends the older operator-only API-key configuration and disabled-radio
+> behavior below. Host CLI credentials remain outside containers, and a
+> ChatGPT or Claude subscription does not substitute for a provider API key.
+
 > **Responder repository amendment — 2026-10-27:** The owner requested that
 > the bounded incident responder live in a separate public
 > `AutoDotAI/incident-response` repository. That repository owns the responder
@@ -185,15 +204,41 @@
 
 ### Current acceptance target for AI configuration and workers
 
+- A clean-clone user sees local demo, Codex CLI, Claude CLI, and API key on
+  `/settings/ai` even before configuring a real model. Choosing an unavailable
+  real path opens its setup instructions or key form; the interface must not
+  present a missing CLI login, worker, or API key as runnable. API setup accepts
+  only OpenAI or Anthropic credentials, offers backend-approved models for the
+  chosen provider, and does not require a Compose restart. The user can
+  replace or delete their own stored key; another account cannot read, use,
+  replace, or delete it. The catalog/settings responses return configuration
+  status and model IDs, never credential values.
+- Persist per-account provider API keys encrypted in PostgreSQL using a unique
+  encryption key automatically generated in the private Compose secrets volume
+  on first boot. Preserve that key across container restart/recreate and never
+  commit a shared key. Keep plaintext only in the transient browser input,
+  authenticated request, and bounded worker call; never put it in browser
+  storage, query strings, run snapshots, telemetry, logs, or exception bodies.
+  A removed credential must make future API runs unavailable; a failed remote
+  authentication request must produce a sanitized run failure without exposing
+  the key. The worker passes the owner's decrypted credential directly to
+  LiteLLM rather than setting a process-global environment variable. No test
+  may spend paid tokens; use fake LiteLLM adapters for integration coverage.
 - When an operator starts an authenticated host CLI worker after the AI
   settings page has loaded, the page must offer a manual provider refresh that
   retrieves the current catalog without discarding an unsaved provider/model
-  choice. A provider remains disabled when its worker or credential is absent;
-  the page must explain the reason. CLI login capability checks must tolerate
+  choice. Before the self-service setup flow is implemented, the existing
+  provider radio may remain disabled when its worker or credential is absent.
+  Once that flow is implemented, all four setup cards stay clickable while
+  saving the provider/model selection and running it remain unavailable until
+  the worker or credential is ready; the credential form itself can be saved
+  before API execution becomes available. The page must explain the reason.
+  CLI login capability checks must tolerate
   a normally responsive host CLI while keeping a finite timeout; a slow or
-  failed check cannot advertise a provider as runnable. A missing server-side
-  LiteLLM key must continue to disable the API choice. No availability check
-  may invoke a paid model completion or expose host credentials to containers.
+  failed check cannot advertise a provider as runnable. A missing LiteLLM
+  credential must keep API execution unavailable, while the key form remains
+  reachable. No availability check may invoke a paid model completion or
+  expose host credentials to containers.
 
 - Add a protected frontend **AI settings page** linked from the application
   navigation. It explains and lets the user choose the provider path:
