@@ -14,6 +14,17 @@ from sqlalchemy.engine import URL
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def compose_project_name() -> str:
+    """Use Compose's resolved name, including top-level name and env overrides."""
+    result = subprocess.run(
+        ["docker", "compose", "config", "--format", "json"],
+        cwd=ROOT, capture_output=True, text=True, check=True)
+    project = json.loads(result.stdout)["name"]
+    if not isinstance(project, str) or not project:
+        raise ValueError("Compose project name is empty")
+    return project
+
+
 def compose_database_url(project: str) -> str:
     config_result = subprocess.run(
         ["docker", "compose", "-p", project, "config", "--format", "json"],
@@ -38,9 +49,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("provider", choices=("codex", "claude"))
     args = parser.parse_args()
-    # Compose uses the checkout directory name when no project is supplied.
-    project = os.environ.get("COMPOSE_PROJECT_NAME") or ROOT.name.lower()
     try:
+        project = compose_project_name()
         database_url = compose_database_url(project)
         subprocess.run(["docker", "compose", "-p", project, "stop", "worker"],
                        cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
