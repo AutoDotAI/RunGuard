@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { AiSettingsPanel } from "./AiSettingsPanel";
 import type { AiProviderCatalog, AiSettings, AiSettingsInput, ApiClient } from "@/lib/api/types";
 
-type SettingsClient = Pick<ApiClient, "getAiProviders" | "getAiSettings" | "updateAiSettings">;
+type SettingsClient = Pick<ApiClient,
+  "getAiProviders" | "getAiSettings" | "updateAiSettings" |
+  "getAiCredentials" | "upsertAiCredential" | "deleteAiCredential">;
 
 const catalog: AiProviderCatalog = {
   providers: [
@@ -30,10 +32,13 @@ const catalog: AiProviderCatalog = {
     {
       provider_path: "api",
       provider: "litellm",
-      label: "LiteLLM API",
+      label: "API key — OpenAI / Anthropic",
       available: true,
       unavailable_reason: null,
-      models: [{ id: "openai/gpt-6", label: "GPT-6 API" }],
+      models: [
+        { id: "openai/gpt-6", label: "GPT-6 API" },
+        { id: "anthropic/claude-sonnet", label: "Claude Sonnet API" },
+      ],
     },
   ],
 };
@@ -62,6 +67,12 @@ function client(overrides: Partial<SettingsClient> = {}): SettingsClient {
     updateAiSettings: vi
       .fn()
       .mockImplementation(async (input: AiSettingsInput) => ({ ...input, available: true })),
+    getAiCredentials: vi.fn().mockResolvedValue({ credentials: [
+      { provider: "openai", configured: true },
+      { provider: "anthropic", configured: false },
+    ] }),
+    upsertAiCredential: vi.fn().mockImplementation(async (provider) => ({ provider, configured: true })),
+    deleteAiCredential: vi.fn().mockImplementation(async (provider) => ({ provider, configured: false })),
     ...overrides,
   };
 }
@@ -89,7 +100,7 @@ describe("AI settings", () => {
     });
     show(api);
     expect(await screen.findByText(/Waiting for the local demo worker to start/)).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /local demo — no AI model/i })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /local demo — no AI model/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Save AI settings" })).toBeDisabled();
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: /local demo — no AI model/i })).toBeEnabled();
@@ -129,6 +140,102 @@ describe("AI settings", () => {
     }));
   });
 
+  it("offers all four paths and lets a new account configure its own API key", async () => {
+    const demo = catalog.providers[0]!;
+    const fresh = { provider_path: "local_demo" as const, provider: "extractive" as const,
+      model: "extractive-v1", available: true };
+    let configured = false;
+    const api = client({
+      getAiProviders: vi.fn().mockImplementation(async () => ({ providers: [
+        { ...demo, ...fresh, label: "local demo — no AI model", models: [{ id: fresh.model, label: "Extractive page excerpt" }] },
+        { ...catalog.providers[0]!, available: false, unavailable_reason: "Host Codex worker is not connected." },
+        catalog.providers[1],
+        { ...catalog.providers[2]!, available: configured,
+          unavailable_reason: configured ? null : "No API key is configured." },
+      ] })),
+      getAiSettings: vi.fn().mockResolvedValue(fresh),
+      getAiCredentials: vi.fn().mockImplementation(async () => ({ credentials: [
+        { provider: "openai", configured }, { provider: "anthropic", configured: false },
+      ] })),
+      upsertAiCredential: vi.fn().mockImplementation(async (provider) => {
+        configured = true;
+        return { provider, configured: true };
+      }),
+      deleteAiCredential: vi.fn().mockImplementation(async (provider) => {
+        configured = false;
+        return { provider, configured: false };
+      }),
+    });
+    show(api);
+    expect(await screen.findByRole("radio", { name: /local demo — no AI model/i })).toBeChecked();
+    expect(screen.getAllByRole("radio", { name: /local demo|Codex CLI|Claude CLI|API key/ })).toHaveLength(4);
+    fireEvent.click(screen.getByRole("radio", { name: /Codex CLI/ }));
+    expect(screen.getByText(/make worker-codex/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save AI settings" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("radio", { name: /Claude CLI/ }));
+    expect(screen.getByText(/make worker-claude/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /API key — OpenAI/ }));
+    expect(screen.getByText("OpenAI key: not configured")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save AI settings" })).toBeDisabled();
+    const secret = "sk-test-secret-value";
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: secret } });
+    fireEvent.click(screen.getByRole("button", { name: "Save key" }));
+    await waitFor(() => expect(api.upsertAiCredential).toHaveBeenCalledWith("openai", { api_key: secret }));
+    expect(await screen.findByText("OpenAI key: configured")).toBeInTheDocument();
+    expect(screen.getByLabelText("Replace API key")).toHaveValue("");
+    expect(screen.queryByText(secret)).not.toBeInTheDocument();
+    expect(JSON.stringify(setItem.mock.calls)).not.toContain(secret);
+    expect(screen.getByLabelText("Model")).toHaveValue("openai/gpt-6");
+    fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
+    await waitFor(() => expect(api.updateAiSettings).toHaveBeenCalledWith({
+      provider_path: "api", provider: "litellm", model: "openai/gpt-6",
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete key" }));
+    expect(await screen.findByText("OpenAI key: not configured")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save AI settings" })).toBeDisabled();
+    setItem.mockRestore();
+  });
+
+  it("keeps a failed key transient and clears it when leaving the API option", async () => {
+    const api = client({
+      getAiCredentials: vi.fn().mockResolvedValue({ credentials: [
+        { provider: "openai", configured: false }, { provider: "anthropic", configured: false },
+      ] }),
+      upsertAiCredential: vi.fn().mockRejectedValue(new Error("sk-never-echo-this")),
+    });
+    show(api);
+    fireEvent.click(await screen.findByRole("radio", { name: /API key — OpenAI/ }));
+    fireEvent.change(screen.getByLabelText("API provider"), { target: { value: "anthropic" } });
+    expect(screen.getByLabelText("Model")).toHaveValue("anthropic/claude-sonnet");
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "short" } });
+    expect(screen.getByRole("button", { name: "Save key" })).toBeDisabled();
+    expect(screen.getByText(/Enter a key of 8–512 characters/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "sk-never-echo-this" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save key" }));
+    expect(await screen.findByRole("alert", { name: "" })).toHaveTextContent("Could not save the API key");
+    expect(screen.queryByText("sk-never-echo-this")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /Codex CLI/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /API key — OpenAI/ }));
+    expect(screen.getByLabelText("API key")).toHaveValue("");
+  });
+
+  it("restores the saved Anthropic API model without showing a key", async () => {
+    const api = client({
+      getAiSettings: vi.fn().mockResolvedValue({
+        provider_path: "api", provider: "litellm", model: "anthropic/claude-sonnet", available: true,
+      }),
+      getAiCredentials: vi.fn().mockResolvedValue({ credentials: [
+        { provider: "openai", configured: false }, { provider: "anthropic", configured: true },
+      ] }),
+    });
+    show(api);
+    expect(await screen.findByRole("radio", { name: /API key — OpenAI/ })).toBeChecked();
+    expect(screen.getByLabelText("API provider")).toHaveValue("anthropic");
+    expect(screen.getByLabelText("Model")).toHaveValue("anthropic/claude-sonnet");
+    expect(screen.getByLabelText("Replace API key")).toHaveValue("");
+  });
+
   it("shows loading while both authenticated requests are pending", () => {
     const pending = new Promise<never>(() => {});
     show(
@@ -140,14 +247,17 @@ describe("AI settings", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading AI settings");
   });
 
-  it("shows provider availability and blocks an unavailable choice", async () => {
+  it("shows provider setup while blocking an unavailable choice from running", async () => {
     const api = client();
     show(api);
     expect(await screen.findByText(/Host worker is not signed in/)).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /Claude CLI/ })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /Claude CLI/ })).toBeEnabled();
     expect(screen.getByRole("radio", { name: /Codex CLI/ })).toBeChecked();
     expect(screen.getByRole("button", { name: "Save AI settings" })).toBeEnabled();
-    expect(screen.queryByLabelText(/API key|credential/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /Claude CLI/ }));
+    expect(screen.getByText(/make worker-claude/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save AI settings" })).toBeDisabled();
+    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
     expect(api.updateAiSettings).not.toHaveBeenCalled();
   });
 
@@ -165,16 +275,17 @@ describe("AI settings", () => {
       getAiSettings: vi.fn().mockResolvedValue({ ...initial, available: false }),
     });
     show(api);
-    expect(await screen.findByRole("radio", { name: /Codex CLI/ })).toBeDisabled();
+    expect(await screen.findByRole("radio", { name: /Codex CLI/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save AI settings" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Refresh providers" }));
-    await waitFor(() => expect(screen.getByRole("radio", { name: /Codex CLI/ })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save AI settings" })).toBeEnabled());
     fireEvent.click(screen.getByRole("radio", { name: /Codex CLI/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
     await waitFor(() => expect(api.updateAiSettings).toHaveBeenCalledWith({
       provider_path: "backend_cli", provider: "codex", model: "gpt-6",
     }));
     expect(api.getAiProviders).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("radio", { name: /LiteLLM API/ })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /API key — OpenAI \/ Anthropic/ })).toBeEnabled();
   });
 
   it("retains an unsaved model choice across provider refresh", async () => {
@@ -218,7 +329,7 @@ describe("AI settings", () => {
       }),
     });
     const view = show(api);
-    fireEvent.click(await screen.findByRole("radio", { name: /LiteLLM API/ }));
+    fireEvent.click(await screen.findByRole("radio", { name: /API key — OpenAI \/ Anthropic/ }));
     expect(screen.getByLabelText("Model")).toHaveValue("openai/gpt-6");
     fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
     expect(await screen.findByText(/AI settings saved/)).toBeInTheDocument();
@@ -229,7 +340,7 @@ describe("AI settings", () => {
     });
     view.unmount();
     show(api);
-    expect(await screen.findByRole("radio", { name: /LiteLLM API/ })).toBeChecked();
+    expect(await screen.findByRole("radio", { name: /API key — OpenAI \/ Anthropic/ })).toBeChecked();
     expect(screen.getByLabelText("Model")).toHaveValue("openai/gpt-6");
   });
 
@@ -254,7 +365,7 @@ describe("AI settings", () => {
         }),
       }),
     );
-    expect(await screen.findByText(/Your saved provider is unavailable/)).toBeInTheDocument();
+    expect(await screen.findByText(/This provider needs setup before it can run/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save AI settings" })).toBeDisabled();
   });
 

@@ -39,9 +39,10 @@ of live paid services.
    detail page. Target/network failure still has a visible error and logs.
 2. Open the AI settings page. A fresh account defaults to **local demo — no AI
    model**; the page refreshes availability if the worker is still starting.
-   Host Codex, host Claude, and server-side LiteLLM are optional real-model
-   choices only when configured and available. Credentials are never entered
-   in the browser.
+   All four paths are visible. Codex and Claude show host-worker setup until
+   connected. For the API path, choose OpenAI or Anthropic, enter your own key
+   in the masked form, select an approved model, and save. The key goes to the
+   authenticated API, is encrypted for your account, and is never returned.
 3. Create a URL Summarizer worker, launch it with a bounded HTML URL, and
    inspect the short copied excerpt, explicit no-AI label, and step logs.
    An oversized PDF fails before summary generation. Manual Retry creates a

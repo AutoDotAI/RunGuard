@@ -41,6 +41,42 @@ afterEach(() => {
 });
 
 describe("FastAPI data client", () => {
+  it("sends an API key only in an authenticated credential request body", async () => {
+    await signIn();
+    const key = "sk-example-secret";
+    const statuses = { credentials: [
+      { provider: "openai", configured: false },
+      { provider: "anthropic", configured: false },
+    ] };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json(200, statuses))
+      .mockResolvedValueOnce(json(200, { provider: "openai", configured: true }))
+      .mockResolvedValueOnce(json(200, { provider: "openai", configured: false }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await api.getAiCredentials()).toEqual(statuses);
+    expect(await api.upsertAiCredential("openai", { api_key: key }))
+      .toEqual({ provider: "openai", configured: true });
+    expect(await api.deleteAiCredential("openai"))
+      .toEqual({ provider: "openai", configured: false });
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method])).toEqual([
+      ["/api/v1/ai/credentials", "GET"],
+      ["/api/v1/ai/credentials/openai", "PUT"],
+      ["/api/v1/ai/credentials/openai", "DELETE"],
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ api_key: key });
+    expect(fetchMock.mock.calls[0]![1].body).toBeUndefined();
+    expect(fetchMock.mock.calls[2]![1].body).toBeUndefined();
+    for (const [url, init] of fetchMock.mock.calls) {
+      expect(url).not.toContain(key);
+      expect(init.headers.Authorization).toBe(`Bearer ${auth.getAccessToken()}`);
+    }
+    expect(window.localStorage.length).toBe(0);
+    expect(JSON.stringify(window.sessionStorage)).not.toContain(key);
+    await expect(api.upsertAiCredential("other" as "openai", { api_key: key }))
+      .rejects.toMatchObject({ status: 422 });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("loads AI catalog and settings with a bearer token and sends only the selected provider/model", async () => {
     await signIn();
     const catalog = { providers: [{

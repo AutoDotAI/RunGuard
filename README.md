@@ -49,15 +49,20 @@ HTML, so signup and a first summary need no model login or API key. This is
 an extractive demo, not a Codex, Claude, or LiteLLM response. The AI settings
 page shows when the worker is ready and refreshes availability during startup.
 
-For a real model, select host Codex CLI, host Claude CLI, or an optional
-server-side LiteLLM API-key path on that page. A CLI-backed worker runs **on
-the host**, using the same PostgreSQL URL as the API through the loopback-bound
-database port. After `docker compose up --build`, use `make worker-codex` or
-`make worker-claude` in another terminal; the target stops the container worker
-and reads the local credential without printing it. The API and browser never
-receive CLI login files; API keys stay in the server environment. See
-[model provider setup](docs/model-providers.md). A model subscription is not
-an API key. No paid model call is required for tests.
+The AI settings page shows all four paths after a clean Compose start: local
+demo, Codex CLI, Claude CLI, and API key. Choose **API key**, then OpenAI or
+Anthropic, enter your own key, choose an approved model, and save settings.
+RunGuard stores the key encrypted for your account; it does not return it in
+the browser or require an `.env` edit or Compose restart. A real model call
+may incur provider charges when you run a Summarizer.
+
+Codex and Claude need a signed-in CLI and host worker on the same machine.
+After `docker compose up --build`, run `make install-backend` and then
+`make worker-codex` or `make worker-claude` in another terminal. That target
+stops the container worker and reads the private local database credential.
+Use **Refresh providers** on the settings page after it starts. The API and
+browser never receive CLI login files. See [model provider setup](docs/model-providers.md).
+A model subscription is not an API key. Tests make no paid model calls.
 
 ## Commands and checks
 

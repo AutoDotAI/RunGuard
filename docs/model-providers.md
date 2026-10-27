@@ -2,8 +2,9 @@
 
 URL Summarizer runs in a separate worker; Website Monitor never calls a
 model. Signed-in users choose an available summary method on the AI settings
-page. For real models, the API reports availability from the host worker or
-server-side LiteLLM configuration. A queued run saves the chosen provider
+page. All four choices are visible after a clean Compose start; a real path
+shows setup controls until it can run. The API reports availability from the
+host worker or account-owned API credential. A queued run saves the provider
 and model snapshot; later settings changes and manual retry do not silently
 switch methods or models. There is no automatic provider fallback or job retry.
 
@@ -42,19 +43,17 @@ restricted working directory, a bounded timeout and output size, and
 sanitized errors. A ChatGPT/Claude subscription login is **not** a LiteLLM
 API key.
 
-## Optional server-side API key
+## API key from the settings page
 
-Set a backend-approved `LLM_MODEL` list and matching provider credential in
-the ignored server environment. The API and worker receive these variables;
-the browser bundle and user settings response do not contain the key. Use the
-AI settings page to choose the available LiteLLM model. The container worker
-starts with its model provider disabled until an API-key route is configured;
-it has no Codex/Claude login files or CLI executable. Recreate API and worker
-after changing server model configuration:
-
-```bash
-docker compose up -d --force-recreate api worker
-```
+Open `/settings/ai`, choose **API key**, then select **OpenAI** or
+**Anthropic**. Enter your own key in the masked field and click **Save key**.
+Select an approved model, then click **Save AI settings**. No `.env` edit or
+Compose restart is needed. You can replace or delete each provider key there.
+Only configured status and model names are returned to the page; the key is
+sent once in an authenticated request and stored encrypted for your account.
+The browser does not store it. The normal Compose worker can use an account
+key without receiving a host CLI login. A real provider request may cost
+money; the automated tests use fakes and spend nothing.
 
 An unavailable selected provider fails visibly with
 `MODEL_PROVIDER_UNAVAILABLE` before any CLI/API request. A failed attempted
