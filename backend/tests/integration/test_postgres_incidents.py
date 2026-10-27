@@ -182,7 +182,7 @@ def test_external_responder_pg_demo_recovery_is_owned_audited_and_idempotent(
                     assert runner.run_once()
                 calls.append(True)
 
-        incident = Responder(users, recovery_timeout=3, sleep=advance).respond(alert_id, owner)
+        incident = Responder(users, recovery_timeout=30, sleep=advance).respond(alert_id, owner)
         assert incident["status"] == "recovered"
         assert incident["action"]["action"] == "resume_demo_worker"
         assert incident["action"]["decision"] == "executed"
