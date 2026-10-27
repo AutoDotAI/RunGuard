@@ -25,7 +25,9 @@ and populated PostgreSQL volume keep their original credentials and data; a
 missing or mismatched old credential stops startup instead of replacing it.
 Do not remove the normal project's credential or PostgreSQL volumes. Set
 `RUNGUARD_POSTGRES_PORT` only if host port 5432 is occupied.
-The UI is <http://localhost:3000/signup>; the API is <http://localhost:8000>.
+The UI is <http://127.0.0.1:3000/signup>. Its browser API requests use the same
+origin, so only port 3000 needs browser or VS Code forwarding. Direct API access
+at <http://127.0.0.1:8000> remains available for local diagnostics.
 `migrate` must exit successfully before the API and worker start. All published
 ports bind to loopback. `docker compose down` stops services and retains the
 PostgreSQL and preserved SQLite volumes; **never use `down --volumes` for the

@@ -247,3 +247,7 @@ Description: Resolve the run owner's stored credential inside the separate worke
 ## 64. Make all four AI paths configurable from the page
 Goal: Let a clean-clone user choose the local demo, connect a host CLI, or enter an OpenAI/Anthropic API key from `/settings/ai`.
 Description: Keep all four paths visible and clickable even when a real provider is not yet runnable; show host-worker setup for Codex/Claude and a transient key/model form for API use, with save, replace, delete, loading, and error states. Sync the typed frontend client with the task #61 contract, never store the key in browser storage, and verify a fresh no-`.env` Compose journey plus restart persistence with fake model calls and updated reviewer instructions.
+
+## 65. Send Compose browser API requests through the web origin
+Goal: Make signup and worker creation work from the site address without requiring the browser to reach a separate API port.
+Description: In the Compose build, use a same-origin `/api/v1/*` path and have the Node web server forward that fixed prefix to the internal API service while preserving methods, bearer headers, bodies, and responses; return a sanitized 502 when the upstream is unavailable. Keep the regular Lovable/Vite development API configuration, avoid a general-purpose proxy or extra Compose file, and verify signup plus worker creation from `127.0.0.1:3000` and a forwarded-site scenario in isolated tests without changing retained user data.
