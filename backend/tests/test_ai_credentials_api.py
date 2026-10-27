@@ -120,3 +120,9 @@ def test_missing_encryption_key_fails_closed_without_echoing_secret(tmp_path, mo
             assert response.status_code == 503
             assert response.json()["error"]["code"] == "CREDENTIAL_UNAVAILABLE"
             assert key not in response.text
+        response = client.put("/api/v1/ai/settings", json={
+            "provider_path": "api", "provider": "litellm", "model": OPENAI_MODEL},
+            headers=headers)
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "CREDENTIAL_UNAVAILABLE"
+        assert key not in response.text

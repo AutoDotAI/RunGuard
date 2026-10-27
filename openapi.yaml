@@ -390,6 +390,11 @@ paths:
                       - { id: openai/gpt-4.1-mini, label: gpt-4.1-mini }
                       - { id: anthropic/claude-sonnet-4-6, label: claude-sonnet-4-6 }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '503':
+          description: Account credential cannot be opened with the local encryption key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/ai/credentials:
     get:
@@ -488,6 +493,11 @@ paths:
                 model: extractive-v1
                 available: true
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '503':
+          description: Account credential cannot be opened with the local encryption key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500': { $ref: '#/components/responses/InternalError' }
     put:
       tags: [AI Settings]
@@ -527,6 +537,11 @@ paths:
               example:
                 error: { code: VALIDATION_ERROR, message: Unsupported provider or model. }
                 request_id: 00000000-0000-4000-8000-000000000001
+        '503':
+          description: Account credential cannot be opened with the local encryption key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500': { $ref: '#/components/responses/InternalError' }
 components:
   headers:
