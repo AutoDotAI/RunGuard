@@ -97,6 +97,18 @@
 > require the responder repository. Moving the code does not expand its fixed
 > inspections, demo-only `resume_demo_worker` action, or access to secrets.
 
+> **Local responder entrypoint amendment — 2026-10-27:** Keep an
+> `incident-response/` folder in this RunGuard checkout, like the owner's
+> order-tracker project, with documented, runnable local operator commands.
+> A one-shot command invokes the pinned external responder against persisted
+> open alerts; an optional watch command repeats that bounded scan serially
+> until stopped, relying on the responder's PostgreSQL incident/audit
+> deduplication. This folder owns no diagnosis or remediation policy and does
+> not copy order-tracker's webhook-driven Codex workspace-write behavior.
+> Normal `docker compose up --build` remains independent of the optional
+> responder image. Neither command may edit application code, expose CLI
+> credentials, retry user jobs, or expand the demo-only remediation gate.
+
 ### Current acceptance target for the storage change
 
 - PostgreSQL 16+ is the **default** database for API, worker, migrations,
