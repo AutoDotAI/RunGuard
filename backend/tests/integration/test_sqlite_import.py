@@ -128,7 +128,7 @@ def test_import_preserves_history_login_and_log_sequence(sqlite_source, postgres
     counts = import_sqlite(sqlite_source, postgres_url, backup)
     assert counts == {"users": 2, "workers": 2, "runs": 3, "run_logs": 1,
                       "alerts": 1, "responder_incidents": 1, "responder_actions": 1,
-                      "incident_analyses": 1, "ai_settings": 0}
+                      "incident_analyses": 1}
     assert backup.exists() and backup.stat().st_mode & 0o777 == 0o600
     assert sqlite_source.read_bytes() == source_bytes
 
