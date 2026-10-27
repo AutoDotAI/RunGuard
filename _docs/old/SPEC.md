@@ -69,8 +69,10 @@
 > separate from the default Compose start.
 
 > **Self-service AI provider amendment — 2026-10-27:** After a clean
-> `docker compose up --build`, the AI settings page must show four selectable
-> paths: local demo, Codex CLI, Claude CLI, and API key. A user may choose the
+> `docker compose up --build`, the AI settings page must show four clickable
+> setup paths: local demo, Codex CLI, Claude CLI, and API key. Clicking a path
+> opens its controls even when execution is unavailable; saving it as a
+> runnable choice still requires its worker or credential. A user may choose the
 > API path, enter their own OpenAI or Anthropic API key, and choose a supported
 > model without editing `.env` or restarting Compose. The key is submitted
 > over the authenticated local API, encrypted at rest with a unique
@@ -225,12 +227,18 @@
 - When an operator starts an authenticated host CLI worker after the AI
   settings page has loaded, the page must offer a manual provider refresh that
   retrieves the current catalog without discarding an unsaved provider/model
-  choice. A provider remains disabled when its worker or credential is absent;
-  the page must explain the reason. CLI login capability checks must tolerate
+  choice. Before the self-service setup flow is implemented, the existing
+  provider radio may remain disabled when its worker or credential is absent.
+  Once that flow is implemented, all four setup cards stay clickable while
+  saving the provider/model selection and running it remain unavailable until
+  the worker or credential is ready; the credential form itself can be saved
+  before API execution becomes available. The page must explain the reason.
+  CLI login capability checks must tolerate
   a normally responsive host CLI while keeping a finite timeout; a slow or
-  failed check cannot advertise a provider as runnable. A missing server-side
-  LiteLLM key must continue to disable the API choice. No availability check
-  may invoke a paid model completion or expose host credentials to containers.
+  failed check cannot advertise a provider as runnable. A missing LiteLLM
+  credential must keep API execution unavailable, while the key form remains
+  reachable. No availability check may invoke a paid model completion or
+  expose host credentials to containers.
 
 - Add a protected frontend **AI settings page** linked from the application
   navigation. It explains and lets the user choose the provider path:
