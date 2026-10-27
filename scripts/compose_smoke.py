@@ -1,4 +1,4 @@
-"""Exercise the local Compose API, worker queue, and persistent SQLite volume.
+"""Exercise the local Compose API, worker queue, and persistent PostgreSQL volume.
 
 This uses example.com as a public Website Monitor target and needs outbound DNS/HTTPS.
 No provider credentials or external authentication service are used.

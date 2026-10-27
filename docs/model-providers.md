@@ -1,45 +1,52 @@
 # Local model providers
 
-URL Summarizer runs in the separate Python worker. Website Monitor never calls a model. The host worker uses the existing Codex CLI login by default; set `RUNGUARD_MODEL_PROVIDER=claude` to use the host Claude CLI. `RUNGUARD_MODEL_PROVIDER=litellm` keeps the API-key route through LiteLLM. The selected provider does not fall back to another provider after an error.
+URL Summarizer runs in a separate worker; Website Monitor never calls a
+model. Signed-in users choose an available provider path and model on the AI
+settings page. The API reports only models for which the selected host worker
+or server-side LiteLLM configuration is ready. A queued run saves the chosen
+provider/model snapshot; later settings changes and manual retry do not
+silently switch models. There is no automatic provider fallback or job retry.
 
-## Host subscription path (default)
+## Host Codex or Claude CLI (default path)
 
-Install and sign in to Codex CLI or Claude CLI **on the machine running the worker**. Do not put CLI auth files in this repository or mount them into Docker. From a clean checkout:
-
-```bash
-cd backend
-uv sync --frozen --extra test
-export RUNGUARD_DATABASE_URL="sqlite:////absolute/path/to/runguard.db"
-export RUNGUARD_AUTH_SECRET="$(openssl rand -hex 32)"
-uv run alembic upgrade head
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
-```
-
-In another terminal, set the **same** database URL and signing secret and start exactly one worker:
+Install and sign in to Codex CLI or Claude CLI on the machine running the
+worker. Keep CLI login material outside Docker and Git. The local Compose
+PostgreSQL service binds its host port to `127.0.0.1`; set
+`RUNGUARD_DATABASE_URL` to that loopback URL for the host worker. Stop the
+container worker first so only one worker owns the queue:
 
 ```bash
+docker compose stop worker
+export RUNGUARD_DATABASE_URL='postgresql+psycopg://runguard:<password>@127.0.0.1:5432/runguard'
 cd backend
-export RUNGUARD_DATABASE_URL="sqlite:////absolute/path/to/runguard.db"
-export RUNGUARD_AUTH_SECRET="<same value used by the API>"
+uv sync --locked --extra test
 uv run python -m app.workers.runner
 ```
 
-The default `RUNGUARD_MODEL_PROVIDER=codex` is implicit. For Claude, set `RUNGUARD_MODEL_PROVIDER=claude` before starting the worker. Both adapters pass bounded extracted page evidence on stdin to a fixed CLI command in a temporary directory, with read-only/restricted tool permissions, a 50-second deadline, and a 32-KiB output cap. CLI stderr and subprocess errors never become API errors or run logs. A nonzero exit, timeout, or empty answer fails that run with `LLM_ERROR` and no automatic retry.
+Substitute the actual password, user, database, and optional port from the
+ignored root `.env`. Codex is the default. Claude is selectable through the
+AI settings page when the host worker advertises it. For named models, the
+worker passes only a backend-allowlisted fixed `--model` argument; the
+catalog's `default` value uses the CLI's native model. CLI calls use a
+restricted working directory, a bounded timeout and output size, and
+sanitized errors. A ChatGPT/Claude subscription login is **not** a LiteLLM
+API key.
 
-The CLI adapters use the operator's existing host login. A browser user never submits a provider credential. A ChatGPT or Claude subscription is not a LiteLLM API key.
+## Optional server-side API key
 
-## Optional API-key path
-
-Set `RUNGUARD_MODEL_PROVIDER=litellm`, `LLM_MODEL` (for example `openai/gpt-4o-mini`), and the provider's credential in the worker environment. The provider key stays server-side. LiteLLM sends one completion request with retries disabled and a 50-second timeout. CI injects fake clients; it does not need an API key or CLI login.
-
-For the local Compose stack, the container worker starts with `RUNGUARD_MODEL_PROVIDER=disabled`. It can process Website Monitor jobs, while a URL Summarizer run fails visibly with `LLM_ERROR`. To opt into the API-key path, put the LiteLLM settings in `.env` and recreate only the worker:
+Set a backend-approved `LLM_MODEL` list and matching provider credential in
+the ignored server environment. The API and worker receive these variables;
+the browser bundle and user settings response do not contain the key. Use the
+AI settings page to choose the available LiteLLM model. The container worker
+starts with its model provider disabled until an API-key route is configured;
+it has no Codex/Claude login files or CLI executable. Recreate API and worker
+after changing server model configuration:
 
 ```bash
-docker compose up -d --force-recreate worker
+docker compose up -d --force-recreate api worker
 ```
 
-Do not set the container provider to `codex` or `claude`: the container has neither the host CLI login nor the CLI executable. For subscription-backed summarization, run the API and worker on the host as shown above. Do not run a host worker concurrently with the Compose worker against the same SQLite queue.
-
-## Verification
-
-Run `cd backend && uv run --no-sync pytest -q tests/test_host_model.py` for fake-CLI selection, timeout, output-limit, and sanitization checks. A live local CLI smoke is optional and uses the already signed-in host account; CI never invokes it.
+An unavailable selected provider fails visibly with
+`MODEL_PROVIDER_UNAVAILABLE` before any CLI/API request. A failed attempted
+model request uses `LLM_ERROR`. Oversized or unsupported PDF input fails
+before model invocation. Tests use fake clients and require no paid provider.

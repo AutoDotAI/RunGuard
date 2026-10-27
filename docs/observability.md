@@ -18,7 +18,7 @@ Enabling telemetry once may briefly recreate the API and worker to add their
 collector settings; wait for `docker compose ps` to show a healthy API before
 submitting a form. Run the smoke only on an isolated project with no user jobs:
 it briefly stops the worker. Use `make observability-down` to stop telemetry
-services while keeping the ordinary site and SQLite volume running. The
+services while keeping the ordinary site and PostgreSQL volume running. The
 isolated offline telemetry smoke uses `OBS_PROJECT=rg-observe-demo make
 observability-smoke` only after starting that isolated project on free ports.
 
@@ -32,11 +32,11 @@ and Tempo ports are not published separately. In remote VS Code, forward ports
 The Grafana development image uses `admin` / `admin` by default; change
 `RUNGUARD_GRAFANA_PASSWORD` in the Compose environment if the host is shared.
 The UI binds only to `127.0.0.1`; the OTLP collector and backend receiver have
-no published host ports. The public Caddy profile has no route to them.
+no published host ports. No public proxy is configured.
 
 ## User-impact alerts
 
-The API evaluates owned SQLite run state every 10 seconds, even with no browser
+The API evaluates owned PostgreSQL run state every 10 seconds, even with no browser
 open and the worker stopped. Two distinct failed runs in a rolling five-minute
 UTC window open a `repeated_run_failure` alert. A queued run older than 60
 seconds opens a `worker_queue_stalled` alert only when the worker heartbeat is
@@ -80,7 +80,7 @@ account. It resumes only the bound run, verifies completion, the same alert's
 resolution, a resolved inbox event, and a cross-process trace. Output contains
 only local demo IDs and timestamps. The script always calls cleanup, including
 after a failed assertion; cleanup releases a bound pause for processing. It
-does not delete the SQLite volume. For a disposable demo volume only, run
+does not delete the PostgreSQL volume. For a disposable demo volume only, run
 `docker compose ... down -v` after reviewing that project's name and data.
 Alertmanager may delay the resolved inbox entry by about 30 seconds.
 
@@ -96,7 +96,7 @@ control. The bounded responder below uses this same gate.
 ### Bounded local responder
 
 The responder is a separate backend command. It scans only persisted open
-alerts and creates one SQLite incident per alert. Its four fixed inspections
+alerts and creates one PostgreSQL incident per alert. Its four fixed inspections
 read worker heartbeat, the owned failed run, recent safe error codes plus the
 affected run's fixed lifecycle log IDs, and the owned queue depth. They never
 copy log message text. A deterministic policy diagnoses target failures separately
@@ -126,7 +126,7 @@ The smoke creates its own account and fixture, waits for the real stalled
 alert and local firing notification, launches `app.responder once`, verifies
 the incident evidence and one audited resume, and checks terminal success plus
 the resolved alert and operator notification. Cleanup releases its own demo
-control state. `down` retains the isolated SQLite volume; delete it only after
+control state. `down` retains the isolated PostgreSQL volume; delete it only after
 reviewing its project name and data. This local action is not a public
 approval or remediation endpoint.
 
@@ -153,7 +153,7 @@ Enter the existing account email and password at the prompts; the password is
 never printed. The script refuses to run while other jobs are queued or
 running. It creates two fake 503 monitor failures, pauses so the app and inbox
 can be inspected, then creates one fake success and resolves the alert. It
-only writes to the chosen local account and SQLite volume. Do not use this
+only writes to the chosen local account and PostgreSQL volume. Do not use this
 interactive smoke against a shared or public deployment. Alertmanager groups
 notifications, so the resolved inbox entry may take about 30 seconds to appear.
 
@@ -163,9 +163,9 @@ The API exports `runguard_runs_enqueued_total{kind}`; the worker exports
 `runguard_runs_started_total{kind}`,
 `runguard_runs_completed_total{kind,status}`,
 `runguard_run_duration_seconds{kind}` and
-`runguard_queue_wait_seconds{kind}`. The API watches the shared worker lock
-file for `runguard_worker_heartbeat_age_seconds`; it grows while the worker is
-stopped. `runguard_queue_depth{kind}` reads committed SQLite queue state. All
+`runguard_queue_wait_seconds{kind}`. The API reads the database worker heartbeat for
+`runguard_worker_heartbeat_age_seconds`; it grows while the worker is
+stopped. `runguard_queue_depth{kind}` reads committed PostgreSQL queue state. All
 Prometheus labels come from fixed allowlists. Histograms use seconds.
 API and worker resource instance IDs are fixed to their single-host service
 names, so a process restart updates the same heartbeat series.
@@ -198,7 +198,7 @@ severity, and request/run/trace IDs. They do not include user emails, tokens,
 passwords, URL query strings, page bodies, model prompts or API keys. The
 existing authenticated run-log API remains separate from operator telemetry.
 
-Stop only telemetry services without deleting the site or SQLite volume:
+Stop only telemetry services without deleting the site or PostgreSQL volume:
 
 ```bash
 make observability-down

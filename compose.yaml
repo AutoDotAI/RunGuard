@@ -99,6 +99,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  # Preserve the old SQLite named volume for the verified one-time import.
+  # No active service mounts it after the PostgreSQL cutover.
   runguard_data:
   postgres_data:
 
