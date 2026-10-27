@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -47,7 +48,7 @@ def test_fresh_postgres_alembic_schema_constraints_and_bigint_cursor(postgres_sc
     try:
         with engine.connect() as connection:
             assert connection.scalar(text("SELECT current_schema()")) == schema
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0007_worker_heartbeat"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == ScriptDirectory.from_config(config).get_current_head()
             assert connection.scalar(text("""
                 SELECT data_type FROM information_schema.columns
                 WHERE table_schema = :schema AND table_name = 'run_logs' AND column_name = 'id'

@@ -10,7 +10,8 @@ from uuid import UUID
 
 from sqlalchemy import select, text
 
-from .db import RunRecord, UserRepository
+from .db import DemoStateRecord, RunRecord, UserRepository
+from .db_serialization import serialize
 from .outbound import FetchResponse
 from .run_logs import new_run_log
 from .store import now
@@ -35,16 +36,24 @@ class DemoControl:
     def __init__(self, database_url: str | None = None):
         require_demo_mode()
         self.users = UserRepository(database_url)
-        path = Path(self.users.database_url.removeprefix("sqlite:///"))
-        if path == Path(":memory:"):
-            raise DemoDenied("Demo requires a persistent SQLite file")
-        self.state_path = Path(f"{path.resolve()}.demo-state.json")
-        self.control_path = Path(f"{path.resolve()}.demo-control.lock")
+        self.postgres = self.users.engine.dialect.name == "postgresql"
+        self.state_path = None
+        self.control_path = None
+        if not self.postgres:
+            path = Path(self.users.database_url.removeprefix("sqlite:///"))
+            if path == Path(":memory:"):
+                raise DemoDenied("Demo requires a persistent database")
+            self.state_path = Path(f"{path.resolve()}.demo-state.json")
+            self.control_path = Path(f"{path.resolve()}.demo-control.lock")
 
     def close(self) -> None:
         self.users.close()
 
     def state(self) -> dict | None:
+        if self.postgres:
+            with self.users.sessions() as session:
+                row = session.get(DemoStateRecord, 1)
+                return json.loads(row.state_json) if row else None
         try:
             return json.loads(self.state_path.read_text())
         except FileNotFoundError:
@@ -54,7 +63,22 @@ class DemoControl:
         """Read the isolated control state for the local operator CLI."""
         return self.state()
 
-    def _save(self, state: dict | None) -> None:
+    def _save(self, state: dict | None, session=None) -> None:
+        if self.postgres:
+            if session is None:
+                with self.users.sessions() as own_session:
+                    self._save(state, own_session)
+                    own_session.commit()
+                return
+            row = session.get(DemoStateRecord, 1)
+            if state is None:
+                if row is not None:
+                    session.delete(row)
+            elif row is None:
+                session.add(DemoStateRecord(id=1, state_json=json.dumps(state, separators=(",", ":"))))
+            else:
+                row.state_json = json.dumps(state, separators=(",", ":"))
+            return
         if state is None:
             self.state_path.unlink(missing_ok=True)
             return
@@ -65,6 +89,15 @@ class DemoControl:
         os.replace(temporary, self.state_path)
 
     def _locked(self, operation):
+        if self.postgres:
+            with self.users.engine.connect() as connection:
+                connection.execute(text("SELECT pg_advisory_lock(:key)"),
+                                   {"key": 0x524744454D4F})
+                try:
+                    return operation()
+                finally:
+                    connection.execute(text("SELECT pg_advisory_unlock(:key)"),
+                                       {"key": 0x524744454D4F})
         self.control_path.parent.mkdir(parents=True, exist_ok=True)
         with self.control_path.open("a+") as file:
             fcntl.flock(file, fcntl.LOCK_EX)
@@ -81,12 +114,13 @@ class DemoControl:
                     return current
                 raise DemoDenied("Finish or clean up the previous demo run first")
             with self.users.sessions() as session:
-                session.execute(text("BEGIN IMMEDIATE"))
+                if not self.postgres:
+                    serialize(session, postgres=False, key=0x524744454D4F)
                 active = session.scalars(select(RunRecord).where(
-                    RunRecord.status.in_(("queued", "running")))).all()
+                    RunRecord.status.in_(("queued", "running"))).limit(2)).all()
                 if active:
                     raise DemoDenied("Unrelated queued or running jobs exist in this volume")
-                self._save({"status": "paused", "run_id": None, "owner_id": None})
+                self._save({"status": "paused", "run_id": None, "owner_id": None}, session)
                 session.commit()
             return self.state()
         return self._locked(operation)
@@ -106,9 +140,10 @@ class DemoControl:
                     return current
                 raise DemoDenied("A different fixture run is already bound")
             with self.users.sessions() as session:
-                session.execute(text("BEGIN IMMEDIATE"))
+                if not self.postgres:
+                    serialize(session, postgres=False, key=0x524744454D4F)
                 active = session.scalars(select(RunRecord).where(
-                    RunRecord.status.in_(("queued", "running")))).all()
+                    RunRecord.status.in_(("queued", "running"))).limit(2)).all()
                 if len(active) != 1 or active[0].id != run_id or active[0].status != "queued":
                     raise DemoDenied("Only the single queued fixture run may be bound")
                 if active[0].kind != "website_monitor":
@@ -116,7 +151,7 @@ class DemoControl:
                 current.update(run_id=run_id, owner_id=active[0].owner_user_id)
                 session.add(new_run_log(run_id, active[0].owner_user_id, now(), "WARN",
                                         "DEMO_WORKER_PAUSED"))
-                self._save(current)
+                self._save(current, session)
                 session.commit()
             return current
         return self._locked(operation)
@@ -131,15 +166,16 @@ class DemoControl:
                     raise DemoDenied("Demo worker was already resumed")
                 return current
             with self.users.sessions() as session:
-                session.execute(text("BEGIN IMMEDIATE"))
+                if not self.postgres:
+                    serialize(session, postgres=False, key=0x524744454D4F)
                 active = session.scalars(select(RunRecord).where(
-                    RunRecord.status.in_(("queued", "running")))).all()
+                    RunRecord.status.in_(("queued", "running"))).limit(2)).all()
                 if len(active) != 1 or active[0].id != current["run_id"]:
                     raise DemoDenied("Unrelated queued or running jobs block demo resume")
                 current["status"] = "resumed"
                 session.add(new_run_log(current["run_id"], current["owner_id"], now(), "INFO",
                                         "DEMO_WORKER_RESUMED"))
-                self._save(current)
+                self._save(current, session)
                 session.commit()
             return current
         return self._locked(operation)
@@ -191,7 +227,7 @@ class DemoWorkerRunner(WorkerRunner):
             return False
         with self.db.sessions() as session:
             active = session.scalars(select(RunRecord).where(
-                RunRecord.status.in_(("queued", "running")))).all()
+                RunRecord.status.in_(("queued", "running"))).limit(2)).all()
             if len(active) != 1 or active[0].id != state["run_id"]:
                 self._touch_heartbeat()
                 return False

@@ -9,12 +9,18 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.db import RunLogRecord, UserRepository
 from app.main import create_app
+
+
+def migration_head() -> str:
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    return ScriptDirectory.from_config(config).get_current_head()
 
 
 SECRET = "test-only-signing-secret-32-bytes-minimum"
@@ -47,7 +53,7 @@ def test_documented_alembic_console_command_imports_app_from_backend(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     with sqlite3.connect(database) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0007_worker_heartbeat"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == migration_head()
 
 
 def test_upgrade_from_users_preserves_account_and_adds_required_schema(tmp_path):
@@ -62,7 +68,7 @@ def test_upgrade_from_users_preserves_account_and_adds_required_schema(tmp_path)
 
     with sqlite3.connect(path) as connection:
         assert connection.execute("SELECT email FROM users WHERE id='user-one'").fetchone()[0] == "owner@example.com"
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0007_worker_heartbeat"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == migration_head()
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"users", "workers", "runs", "run_logs", "alerts"} <= tables
         for table, expected in {

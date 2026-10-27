@@ -177,6 +177,14 @@ class IncidentAnalysisRecord(Base):
     __table_args__ = (Index("uq_incident_analysis_attempt", "incident_id", "attempt", unique=True),)
 
 
+
+class DemoStateRecord(Base):
+    __tablename__ = "demo_control_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    state_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 def default_database_url() -> str:
     path = Path(__file__).resolve().parents[1] / "data" / "runguard.db"
     return f"sqlite:///{path}"
