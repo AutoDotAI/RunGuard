@@ -30,6 +30,7 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
   const [demoPolls, setDemoPolls] = useState(0);
 
   const demoUnavailable = settings.data?.provider_path === "local_demo" &&
+    (!choice || choice.provider_path === "local_demo") &&
     (!settings.data.available || !catalog.data?.providers.some((provider) =>
       provider.provider_path === "local_demo" && provider.provider === "extractive" && provider.available));
 
@@ -45,7 +46,7 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
 
   useEffect(() => {
     if (settings.data) {
-      setChoice({
+      setChoice((current) => current ?? {
         provider_path: settings.data.provider_path,
         provider: settings.data.provider,
         model: settings.data.model,
