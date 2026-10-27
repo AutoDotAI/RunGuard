@@ -185,6 +185,16 @@
 
 ### Current acceptance target for AI configuration and workers
 
+- When an operator starts an authenticated host CLI worker after the AI
+  settings page has loaded, the page must offer a manual provider refresh that
+  retrieves the current catalog without discarding an unsaved provider/model
+  choice. A provider remains disabled when its worker or credential is absent;
+  the page must explain the reason. CLI login capability checks must tolerate
+  a normally responsive host CLI while keeping a finite timeout; a slow or
+  failed check cannot advertise a provider as runnable. A missing server-side
+  LiteLLM key must continue to disable the API choice. No availability check
+  may invoke a paid model completion or expose host credentials to containers.
+
 - Add a protected frontend **AI settings page** linked from the application
   navigation. It explains and lets the user choose the provider path:
   `backend_cli` (Codex default or Claude) or `api` (server-side LiteLLM),

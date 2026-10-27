@@ -151,6 +151,63 @@ describe("AI settings", () => {
     expect(api.updateAiSettings).not.toHaveBeenCalled();
   });
 
+  it("refreshes a newly connected host provider without a page reload", async () => {
+    const unavailable: AiProviderCatalog = { providers: catalog.providers.map((provider) =>
+      provider.provider === "claude" ? provider : {
+        ...provider, available: false, unavailable_reason: "Provider is not connected.",
+      }) };
+    const connected: AiProviderCatalog = { providers: unavailable.providers.map((provider) =>
+      provider.provider === "codex" ? {
+        ...provider, available: true, unavailable_reason: null,
+      } : provider) };
+    const api = client({
+      getAiProviders: vi.fn().mockResolvedValueOnce(unavailable).mockResolvedValue(connected),
+      getAiSettings: vi.fn().mockResolvedValue({ ...initial, available: false }),
+    });
+    show(api);
+    expect(await screen.findByRole("radio", { name: /Codex CLI/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh providers" }));
+    await waitFor(() => expect(screen.getByRole("radio", { name: /Codex CLI/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole("radio", { name: /Codex CLI/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
+    await waitFor(() => expect(api.updateAiSettings).toHaveBeenCalledWith({
+      provider_path: "backend_cli", provider: "codex", model: "gpt-6",
+    }));
+    expect(api.getAiProviders).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("radio", { name: /LiteLLM API/ })).toBeDisabled();
+  });
+
+  it("retains an unsaved model choice across provider refresh", async () => {
+    const api = client();
+    show(api);
+    expect(await screen.findByRole("radio", { name: /Codex CLI/ })).toBeChecked();
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "gpt-6-mini" } });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh providers" }));
+    await waitFor(() => expect(api.getAiProviders).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("radio", { name: /Codex CLI/ })).toBeChecked();
+    expect(screen.getByLabelText("Model")).toHaveValue("gpt-6-mini");
+    fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
+    await waitFor(() => expect(api.updateAiSettings).toHaveBeenCalledWith({
+      provider_path: "backend_cli", provider: "codex", model: "gpt-6-mini",
+    }));
+  });
+
+  it("shows a failed provider refresh and allows a retry", async () => {
+    const api = client({
+      getAiProviders: vi.fn().mockResolvedValueOnce(catalog)
+        .mockRejectedValueOnce(new Error("Provider catalog unavailable"))
+        .mockResolvedValue(catalog),
+    });
+    show(api);
+    expect(await screen.findByRole("radio", { name: /Codex CLI/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh providers" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Provider catalog unavailable");
+    expect(screen.queryByText(/AI settings saved/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("radio", { name: /Codex CLI/ })).toBeChecked();
+    expect(api.getAiProviders).toHaveBeenCalledTimes(3);
+  });
+
   it("selects an allowed API model, saves it, and reloads the persisted choice", async () => {
     let stored = initial;
     const api = client({

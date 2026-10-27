@@ -227,3 +227,7 @@ Description: Replace the in-repo responder policy with a small PostgreSQL/demo-c
 ## 59. Prune unused local helper scripts
 Goal: Keep one documented owner and a verified caller for each local smoke or recovery script.
 Description: Inventory the nine current `scripts/` files after task #58 moves the responder drill; `postgres_network_smoke.py` currently has no Makefile, CI, documentation, or test caller. Remove a script only when its behavior is covered elsewhere or add a justified verified caller, then update Makefile/docs/CI references and run the affected local checks without deleting backup, PostgreSQL, observability, or security coverage.
+
+## 60. Refresh AI provider availability after a host worker connects
+Goal: Let the AI settings page show an authenticated Codex or Claude host worker without misreporting missing API credentials.
+Description: Add an explicit provider refresh control that fetches the current catalog without erasing an unsaved choice, and allow a bounded host CLI login status check enough time for a normally responsive Claude CLI. Test a late worker connection, slow/failed CLI status, unchanged demo operation, and the LiteLLM option staying unavailable without a server-side key; no paid model request or browser-stored secret is needed.
