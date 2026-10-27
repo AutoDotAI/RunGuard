@@ -6,32 +6,28 @@ open incident. This is an advisory step; neither CLI can approve a remediation,
 retry a job, edit RunGuard, or restart a service. The API, job worker and alert
 webhook never start the CLI.
 
-## Use a host-readable local database
+## Connect the host CLI to local PostgreSQL
 
-The normal Compose stack stores SQLite in a Docker-managed volume. For this
-optional host command, start a **new local Compose project** with a directory
-you own. Keep `.env` as described in the root README.
+The normal Compose PostgreSQL service binds port 5432 to host loopback. Use
+its configured database name, user, password, and port to set the same
+`RUNGUARD_DATABASE_URL` for the host command. Stop the container job worker
+before starting a host worker against that database. The host's `codex` or
+`claude` login stays on the host; no login directory is mounted into Compose.
 
 ```bash
-mkdir -p "$PWD/.local-data/host-ai"
-export RUNGUARD_HOST_DATA_DIR="$PWD/.local-data/host-ai"
-docker compose -p rg-host-ai -f compose.yaml -f compose.host-ai.yaml up --build -d --wait
+export RUNGUARD_DATABASE_URL='postgresql+psycopg://runguard:<password>@127.0.0.1:5432/runguard'
+cd backend
+uv sync --locked --extra test
 ```
 
-The override binds only the SQLite data directory. It does not bind
-`~/.codex`, `~/.claude`, API tokens, or `CODEX_HOME` into containers. Do not
-reuse a Compose project that already has a named data volume. `docker compose
-down` without `-v` retains the local data. The host command opens the same
-SQLite file directly, so keep one API and one worker on the host.
+Substitute the password and optional port from the ignored root `.env`.
+Keep this URL out of source control and shell transcripts.
 
 When a real alert has produced a responder incident, use the `incident_id`
 and `owner_user_id` from the responder's local output or incident record.
 From the repository root:
 
 ```bash
-export RUNGUARD_DATABASE_URL="sqlite:////${RUNGUARD_HOST_DATA_DIR#/}/runguard.db"
-cd backend
-uv sync --frozen --extra test
 uv run python -m app.incident_ai investigate INCIDENT_ID --owner-id OWNER_USER_ID
 uv run python -m app.incident_ai review INCIDENT_ID --owner-id OWNER_USER_ID
 ```
