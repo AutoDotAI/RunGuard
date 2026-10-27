@@ -33,7 +33,9 @@ The Make target stops the container worker, reads the private Compose database
 credential without printing it, and launches exactly one host worker. It works
 whether a fresh project generated credentials in its named volume or an older
 project uses its existing ignored `.env`. Select Codex or Claude through the
-AI settings page when the host worker advertises it. For named models, the
+AI settings page when the host worker advertises it. The page's
+**Refresh providers** button retrieves the current availability after the
+host worker starts; an unsaved model choice is retained. For named models, the
 worker passes only a backend-allowlisted fixed `--model` argument; the
 catalog's `default` value uses the CLI's native model. CLI calls use a
 restricted working directory, a bounded timeout and output size, and

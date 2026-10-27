@@ -28,6 +28,7 @@ from .url_summarizer import summarize
 
 
 Handler = Callable[[RunSnapshot], HandlerOutcome]
+CLI_STATUS_TIMEOUT_SECONDS = 7
 
 
 def _elapsed_ms(start: str | None, finish: str) -> int:
@@ -66,7 +67,8 @@ def _worker_capabilities() -> dict[str, list[str]]:
         try:
             result = subprocess.run(status_command, env=_cli_environment(),
                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL, timeout=3, check=False)
+                                    stderr=subprocess.DEVNULL,
+                                    timeout=CLI_STATUS_TIMEOUT_SECONDS, check=False)
         except (OSError, subprocess.TimeoutExpired):
             continue
         if result.returncode == 0:

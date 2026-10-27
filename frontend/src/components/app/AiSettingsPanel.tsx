@@ -113,6 +113,14 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
         uses no AI model. Codex and Claude use a host worker; LiteLLM uses a server configured API key.
         Credentials stay on the server or host.
       </p>
+      <Button type="button" variant="outline"
+        disabled={catalog.isFetching || settings.isFetching}
+        onClick={() => {
+          setSaved(false);
+          void Promise.all([catalog.refetch(), settings.refetch()]);
+        }}>
+        {catalog.isFetching || settings.isFetching ? "Refreshing providers…" : "Refresh providers"}
+      </Button>
       {demoUnavailable && demoPolls < DEMO_MAX_POLLS && (
         <p role="status" className="rounded-md border p-4 text-sm">
           Waiting for the local demo worker to start. Availability refreshes automatically.
