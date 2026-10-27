@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from app.db import Base
 from app.main import create_app
+from app.workers.runner import _worker_capabilities
 
 
 SECRET = "test-only-secret-with-at-least-32-bytes"
@@ -132,3 +133,18 @@ def test_litellm_catalog_filters_models_without_matching_credentials(tmp_path, m
         result = client.put("/api/v1/ai/settings", json=unavailable_model, headers=_headers(token))
         assert result.status_code == 422
         assert result.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_worker_and_catalog_agree_on_nondefault_api_credential(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    monkeypatch.delenv("RUNGUARD_MODEL_PROVIDER", raising=False)
+    monkeypatch.setenv("RUNGUARD_LITELLM_MODELS", "groq/llama-3.3-70b-versatile")
+    monkeypatch.setenv("GROQ_API_KEY", "test-only-key")
+    monkeypatch.setattr("app.workers.runner.shutil.which", lambda _name: None)
+    capability = _worker_capabilities()
+    assert capability == {"providers": ["litellm"]}
+    app.state.ai_settings.capability_reader = lambda: set(capability["providers"])
+    api = next(provider for provider in app.state.ai_settings.catalog().providers
+               if provider.provider == "litellm")
+    assert api.available is True
+    assert [model.id for model in api.models] == ["groq/llama-3.3-70b-versatile"]

@@ -2,7 +2,6 @@
 
 import json
 import os
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
@@ -11,25 +10,11 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .db import AiSettingsRecord, UserRepository
 from .models import AiModel, AiProvider, AiProviderCatalog, AiSettings, AiSettingsInput
+from .provider_config import MODEL_ID, configured_litellm_models, has_model_credential
 from .store import Problem
 
 
-_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
 _HOST_TTL = timedelta(seconds=20)
-_API_KEY_NAMES = {
-    "openai": ("OPENAI_API_KEY",),
-    "anthropic": ("ANTHROPIC_API_KEY",),
-    "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
-    "google": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
-    "azure": ("AZURE_API_KEY",),
-    "cohere": ("COHERE_API_KEY",),
-    "groq": ("GROQ_API_KEY",),
-    "mistral": ("MISTRAL_API_KEY",),
-    "together_ai": ("TOGETHERAI_API_KEY",),
-    "openrouter": ("OPENROUTER_API_KEY",),
-    "fireworks_ai": ("FIREWORKS_AI_API_KEY",),
-    "deepseek": ("DEEPSEEK_API_KEY",),
-}
 
 
 def _utc_now() -> datetime:
@@ -42,21 +27,11 @@ def _models(value: str | None, *, include_default: bool = False) -> list[AiModel
     seen: set[str] = set()
     for raw in ids:
         model_id = raw.strip()
-        if not _MODEL_ID.fullmatch(model_id) or model_id in seen:
+        if not MODEL_ID.fullmatch(model_id) or model_id in seen:
             continue
         seen.add(model_id)
         result.append(AiModel(id=model_id, label="CLI default model" if model_id == "default" else model_id))
     return result
-
-
-def _credential_for(model_id: str, environ: dict[str, str]) -> bool:
-    provider = model_id.split("/", 1)[0].lower()
-    if provider.startswith("gpt-") or provider.startswith("o1") or provider.startswith("o3") or provider.startswith("o4"):
-        provider = "openai"
-    elif provider.startswith("claude-"):
-        provider = "anthropic"
-    key_names = _API_KEY_NAMES.get(provider, ())
-    return any(environ.get(name, "").strip() for name in key_names)
 
 
 class AiSettingsService:
@@ -89,9 +64,10 @@ class AiSettingsService:
         connected = self.capability_reader()
         codex = _models(environ.get("RUNGUARD_CODEX_MODELS"), include_default=True)
         claude = _models(environ.get("RUNGUARD_CLAUDE_MODELS"), include_default=True)
-        configured_api_models = _models(environ.get("RUNGUARD_LITELLM_MODELS") or environ.get("LLM_MODEL"))
+        configured_api_models = [AiModel(id=model, label=model)
+                                 for model in configured_litellm_models(environ)]
         credentialed_api_models = [item for item in configured_api_models
-                                   if _credential_for(item.id, environ)]
+                                   if has_model_credential(item.id, environ)]
         # The schema has availability at provider level, so do not advertise
         # a model that this server cannot authenticate while another works.
         api_models = credentialed_api_models or configured_api_models
