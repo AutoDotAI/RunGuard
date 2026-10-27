@@ -1,15 +1,61 @@
 # RunGuard
 
-RunGuard is a local React/FastAPI application with a separate Python job worker,
-PostgreSQL, and optional Grafana/Prometheus/Loki/Tempo observability. It is **not
-publicly deployed**. Public hosting and CD remain deferred under
+RunGuard runs website checks and URL summaries as background jobs. You can save
+workers, run them on demand, inspect timestamped logs, and see failures and
+user-impact alerts on a dashboard. The local app uses a React frontend, FastAPI,
+a separate Python job worker, and PostgreSQL. Grafana, Prometheus, Loki, and
+Tempo are optional. It is **not publicly deployed**. Public hosting and CD remain deferred under
 [issue #34](https://github.com/AutoDotAI/RunGuard/issues/34). The approved
 scope is in [_docs/old/SPEC.md](_docs/old/SPEC.md); work and independent QA
 are tracked in [AutoDotAI issues](https://github.com/AutoDotAI/RunGuard/issues).
 The existing Lovable frontend stays in `frontend/`; see
 [_docs/lovable-sync.md](_docs/lovable-sync.md).
 
-## Start locally
+## Quick start
+
+Install Docker Engine with Compose and Make, then run from the repository root:
+
+```bash
+git clone https://github.com/AutoDotAI/RunGuard.git
+cd RunGuard
+make compose-up
+```
+
+Open <http://127.0.0.1:3000/signup> and create an account. The default URL
+Summarizer mode is a local demo that needs no AI login or API key. To inspect
+services or stop them later:
+
+```bash
+make compose-status
+make compose-logs
+make compose-down
+```
+
+`make compose-down` keeps your account and run history in the PostgreSQL volume.
+Run `make help` to see the remaining commands.
+
+## Screenshots
+
+### AI settings
+
+Choose the local demo, a signed-in host Codex or Claude worker, or your own
+OpenAI or Anthropic API key. The page shows which choices are ready to run.
+
+![RunGuard AI settings with four provider choices](docs/screenshots/ai-settings.png)
+
+### Dashboard
+
+See recent runs, success rates, failures, and user-impact alerts.
+
+![RunGuard dashboard with run statistics and recent executions](docs/screenshots/dashboard.png)
+
+### Workers
+
+Save and run website monitors or URL summarizers.
+
+![RunGuard workers list with a completed website monitor](docs/screenshots/workers.png)
+
+## Start locally: details
 
 Requirements: Docker Engine with Compose and free host ports 3000, 8000, and
 5432. A fresh clone needs no `.env`, Python, Node.js, API key, or exported
