@@ -61,7 +61,7 @@ def test_postgres_settings_survive_restart_with_owner_isolation(postgres_url, mo
         saved = client.put("/api/v1/ai/settings", json=choice, headers=first_headers)
         assert saved.status_code == 200
         assert saved.json() == {**choice, "available": True}
-        assert client.get("/api/v1/ai/settings", headers=second_headers).json()["model"] == "default"
+        assert client.get("/api/v1/ai/settings", headers=second_headers).json()["model"] == "extractive-v1"
 
     restarted = create_app(secret=SECRET, database_url=postgres_url)
     with TestClient(restarted) as client:

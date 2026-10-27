@@ -6,7 +6,7 @@ export const Route = createFileRoute("/_app/settings/ai")({
   head: () => ({
     meta: [
       { title: "AI settings — RunGuard" },
-      { name: "description", content: "Choose the provider and model for future URL summaries." },
+      { name: "description", content: "Choose a local demo or model provider for future URL summaries." },
     ],
   }),
   component: AiSettingsPage,
@@ -15,7 +15,7 @@ export const Route = createFileRoute("/_app/settings/ai")({
 function AiSettingsPage() {
   return (
     <>
-      <PageHeader title="AI settings" sub="Choose how URL Summarizer requests a model" />
+      <PageHeader title="Summary settings" sub="Choose a local demo or an AI model for URL Summarizer" />
       <AiSettingsPanel />
     </>
   );

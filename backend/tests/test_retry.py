@@ -21,7 +21,7 @@ SECRET = "test-only-signing-secret-32-bytes-minimum"
 
 def app_for(path: Path):
     app = create_app(secret=SECRET, database_url=f"sqlite:///{path}")
-    app.state.ai_settings.capability_reader = lambda: {"codex"}
+    app.state.ai_settings.capability_reader = lambda: {"codex", "extractive"}
     return app
 
 
@@ -92,8 +92,8 @@ def test_retry_preserves_original_snapshot_and_logs_across_restart(tmp_path, kin
     path = tmp_path / "app.db"
     config = json.dumps({"original": kind, "version": 1}, separators=(",", ":"))
     expected_config = (config if kind == "website_monitor" else json.dumps({
-        "original": kind, "version": 1, "provider_path": "backend_cli",
-        "provider": "codex", "model": "default"}, sort_keys=True, separators=(",", ":")))
+        "original": kind, "version": 1, "provider_path": "local_demo",
+        "provider": "extractive", "model": "extractive-v1"}, sort_keys=True, separators=(",", ":")))
     observed = []
     with TestClient(app_for(path)) as client:
         token = register(client, "alice@example.com")

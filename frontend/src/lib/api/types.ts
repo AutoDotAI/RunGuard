@@ -123,8 +123,8 @@ export interface AlertPage {
   total: number;
 }
 
-export type AiProviderPath = "backend_cli" | "api";
-export type AiProviderId = "codex" | "claude" | "litellm";
+export type AiProviderPath = "local_demo" | "backend_cli" | "api";
+export type AiProviderId = "extractive" | "codex" | "claude" | "litellm";
 
 export interface AiModel {
   id: string;

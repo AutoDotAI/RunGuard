@@ -5,6 +5,8 @@ from typing import Mapping
 
 
 MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
+DEMO_MODEL = "extractive-v1"
+DEMO_LABEL = "local demo — no AI model"
 API_KEY_NAMES = {
     "openai": ("OPENAI_API_KEY",),
     "anthropic": ("ANTHROPIC_API_KEY",),

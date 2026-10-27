@@ -47,8 +47,8 @@ class AiModel(StrictModel):
 
 
 class AiProvider(StrictModel):
-    provider_path: Literal["backend_cli", "api"]
-    provider: Literal["codex", "claude", "litellm"]
+    provider_path: Literal["local_demo", "backend_cli", "api"]
+    provider: Literal["extractive", "codex", "claude", "litellm"]
     label: str
     available: bool
     unavailable_reason: str | None
@@ -60,8 +60,8 @@ class AiProviderCatalog(StrictModel):
 
 
 class AiSettingsInput(StrictModel):
-    provider_path: Literal["backend_cli", "api"]
-    provider: Literal["codex", "claude", "litellm"]
+    provider_path: Literal["local_demo", "backend_cli", "api"]
+    provider: Literal["extractive", "codex", "claude", "litellm"]
     model: str = Field(min_length=1, max_length=160)
 
 

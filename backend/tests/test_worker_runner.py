@@ -20,7 +20,7 @@ SECRET = "test-only-signing-secret-32-bytes-minimum"
 
 def setup_client(path):
     app = create_app(secret=SECRET, database_url=f"sqlite:///{path}")
-    app.state.ai_settings.capability_reader = lambda: {"codex"}
+    app.state.ai_settings.capability_reader = lambda: {"codex", "extractive"}
     return TestClient(app)
 
 

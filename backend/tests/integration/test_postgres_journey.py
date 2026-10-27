@@ -17,6 +17,9 @@ from sqlalchemy.engine import make_url
 
 from app import outbound
 from app.main import create_app
+from app.provider_config import DEMO_LABEL, DEMO_MODEL
+from app.workers.host_model import HostCLIClient
+from app.workers.llm import LiteLLMClient
 from app.workers.runner import WorkerAlreadyRunning, WorkerRunner
 from app.workers.url_summarizer import summarize
 from app.workers.website_monitor import monitor
@@ -81,6 +84,39 @@ def _logs(client, headers, run_id):
     return rows
 
 
+def test_postgres_fresh_account_uses_no_key_extractive_demo(postgres_url, monkeypatch):
+    monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "disabled")
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    page = outbound.FetchResponse(200, {"Content-Type": "text/html"},
+        b"<title>River report</title><article><p>" +
+        b"The river rose overnight. Residents moved to higher ground. " +
+        b"Officials monitored the roads and shared a new update. " * 2 +
+        b"</p></article>")
+    monkeypatch.setattr(outbound, "fetch", lambda _url: page)
+    def forbidden_model(*_args, **_kwargs):
+        raise AssertionError("The no-key demo must not call a model")
+    monkeypatch.setattr(HostCLIClient, "complete", forbidden_model)
+    monkeypatch.setattr(LiteLLMClient, "complete", forbidden_model)
+    with TestClient(create_app(secret=SECRET, database_url=postgres_url)) as client:
+        alice = _register(client, "fresh-demo@example.com")
+        worker_id = _worker(client, alice, "url_summarizer", "Demo")
+        with WorkerRunner(postgres_url) as runner:
+            selected = client.get(f"{API}/ai/settings", headers=alice).json()
+            assert selected == {"provider_path": "local_demo", "provider": "extractive",
+                                "model": DEMO_MODEL, "available": True}
+            run_id = _enqueue(client, alice, worker_id)
+            assert runner.run_once() is True
+            result = _run(client, alice, run_id)
+            assert result["status"] == "succeeded"
+            assert result["result"]["model"] == DEMO_LABEL
+            assert result["result"]["summary"].startswith("- The river rose overnight.")
+            events = [item["event"] for item in _logs(client, alice, run_id)]
+            assert "DEMO_EXTRACTIVE_STARTED" in events
+            assert "DEMO_EXTRACTIVE_COMPLETED" in events
+            assert "LLM_REQUEST_STARTED" not in events
+
+
 def test_postgres_full_journey_two_workers_alert_retry_and_restart(postgres_url):
     calls = []
     # A CI runner has no host CLI login. Advertise the injected fake model as
@@ -141,6 +177,11 @@ def test_postgres_full_journey_two_workers_alert_retry_and_restart(postgres_url)
         assert _logs(client, alice, retry_id)[-1]["event"] == "RUN_SUCCEEDED"
         assert client.get(f"{API}/alerts", headers=alice).json()["items"][0]["status"] == "resolved"
 
+        # This journey injects a fake Codex model; select that real-provider
+        # snapshot explicitly now that fresh accounts default to the demo.
+        selected = client.put(f"{API}/ai/settings", headers=alice, json={
+            "provider_path": "backend_cli", "provider": "codex", "model": "default"})
+        assert selected.status_code == 200, selected.text
         summary_run = _enqueue(client, alice, summary_id)
         with WorkerRunner(postgres_url, capability_reporter=fake_capabilities) as runner:
             runner.handlers["url_summarizer"] = lambda snapshot: summarize(

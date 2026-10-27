@@ -44,13 +44,13 @@ def test_catalog_auth_default_and_server_side_secrets(tmp_path, monkeypatch):
         response = client.get("/api/v1/ai/providers", headers=_headers(token))
         assert response.status_code == 200
         providers = response.json()["providers"]
-        assert [p["provider"] for p in providers] == ["codex", "claude", "litellm"]
+        assert [p["provider"] for p in providers] == ["extractive", "codex", "claude", "litellm"]
         assert all(not p["available"] for p in providers)
-        assert [m["id"] for m in providers[0]["models"]] == ["default", "gpt-5.4"]
+        assert [m["id"] for m in providers[1]["models"]] == ["default", "gpt-5.4"]
         assert "super-secret-value" not in response.text
         settings = client.get("/api/v1/ai/settings", headers=_headers(token)).json()
-        assert settings == {"provider_path": "backend_cli", "provider": "codex",
-                            "model": "default", "available": False}
+        assert settings == {"provider_path": "local_demo", "provider": "extractive",
+                            "model": "extractive-v1", "available": False}
         assert "super-secret-value" not in json.dumps(settings)
 
 
@@ -75,13 +75,13 @@ def test_settings_validation_unavailable_and_isolation_after_restart(tmp_path, m
         response = client.put("/api/v1/ai/settings", json=valid, headers=_headers(first))
         assert response.status_code == 200
         assert response.json() == {**valid, "available": True}
-        assert client.get("/api/v1/ai/settings", headers=_headers(second)).json()["provider"] == "codex"
+        assert client.get("/api/v1/ai/settings", headers=_headers(second)).json()["provider"] == "extractive"
 
     reopened = _app(tmp_path, monkeypatch)
     reopened.state.ai_settings.capability_reader = lambda: {"claude"}
     with TestClient(reopened) as client:
         assert client.get("/api/v1/ai/settings", headers=_headers(first)).json() == {**valid, "available": True}
-        assert client.get("/api/v1/ai/settings", headers=_headers(second)).json()["provider"] == "codex"
+        assert client.get("/api/v1/ai/settings", headers=_headers(second)).json()["provider"] == "extractive"
 
 
 def test_stale_heartbeat_does_not_offer_cli(tmp_path, monkeypatch):
@@ -92,11 +92,11 @@ def test_stale_heartbeat_does_not_offer_cli(tmp_path, monkeypatch):
         stale = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
         connection.execute(text("INSERT INTO worker_heartbeat VALUES (1, :last_seen, :capabilities)"),
                            {"last_seen": stale, "capabilities": '{"providers":["codex"]}'})
-    assert app.state.ai_settings.catalog().providers[0].available is False
+    assert next(p for p in app.state.ai_settings.catalog().providers if p.provider == "codex").available is False
     with app.state.users.engine.begin() as connection:
         connection.execute(text("UPDATE worker_heartbeat SET last_seen_at = :last_seen"),
                            {"last_seen": datetime.now(timezone.utc).isoformat()})
-    assert app.state.ai_settings.catalog().providers[0].available is True
+    assert next(p for p in app.state.ai_settings.catalog().providers if p.provider == "codex").available is True
 
 
 def test_litellm_requires_worker_and_credential_for_allowlisted_model(tmp_path, monkeypatch):
@@ -142,7 +142,7 @@ def test_worker_and_catalog_agree_on_nondefault_api_credential(tmp_path, monkeyp
     monkeypatch.setenv("GROQ_API_KEY", "test-only-key")
     monkeypatch.setattr("app.workers.runner.shutil.which", lambda _name: None)
     capability = _worker_capabilities()
-    assert capability == {"providers": ["litellm"]}
+    assert capability == {"providers": ["extractive", "litellm"]}
     app.state.ai_settings.capability_reader = lambda: set(capability["providers"])
     api = next(provider for provider in app.state.ai_settings.catalog().providers
                if provider.provider == "litellm")

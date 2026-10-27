@@ -67,6 +67,68 @@ function client(overrides: Partial<SettingsClient> = {}): SettingsClient {
 }
 
 describe("AI settings", () => {
+  it("refreshes a fresh demo choice automatically when the worker heartbeat arrives", async () => {
+    const demo = {
+      provider_path: "local_demo" as const,
+      provider: "extractive" as const,
+      model: "extractive-v1",
+      available: false,
+    };
+    const unavailableCatalog: AiProviderCatalog = { providers: [{
+      provider_path: "local_demo", provider: "extractive",
+      label: "local demo — no AI model", available: false,
+      unavailable_reason: "Local demo worker is not connected.",
+      models: [{ id: "extractive-v1", label: "Extractive page excerpt" }],
+    }] };
+    const availableCatalog: AiProviderCatalog = { providers: [{
+      ...unavailableCatalog.providers[0]!, available: true, unavailable_reason: null,
+    }] };
+    const api = client({
+      getAiProviders: vi.fn().mockResolvedValueOnce(unavailableCatalog).mockResolvedValue(availableCatalog),
+      getAiSettings: vi.fn().mockResolvedValueOnce(demo).mockResolvedValue({ ...demo, available: true }),
+    });
+    show(api);
+    expect(await screen.findByText(/Waiting for the local demo worker to start/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /local demo — no AI model/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save AI settings" })).toBeDisabled();
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: /local demo — no AI model/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Save AI settings" })).toBeEnabled();
+    }, { timeout: 8_000 });
+    expect(screen.queryByText(/Waiting for the local demo worker to start/)).not.toBeInTheDocument();
+    expect(api.getAiProviders).toHaveBeenCalledTimes(2);
+    expect(api.getAiSettings).toHaveBeenCalledTimes(2);
+  }, 10_000);
+
+  it("labels the fresh local extractive choice as a no-AI demo", async () => {
+    const demo = {
+      provider_path: "local_demo" as const,
+      provider: "extractive" as const,
+      model: "extractive-v1",
+      available: true,
+    };
+    const api = client({
+      getAiProviders: vi.fn().mockResolvedValue({ providers: [{
+        provider_path: demo.provider_path,
+        provider: demo.provider,
+        label: "local demo — no AI model",
+        available: true,
+        unavailable_reason: null,
+        models: [{ id: demo.model, label: "Extractive page excerpt" }],
+      }] }),
+      getAiSettings: vi.fn().mockResolvedValue(demo),
+    });
+    show(api);
+    expect(await screen.findByRole("radio", { name: /local demo — no AI model/i })).toBeChecked();
+    expect(screen.getByText(/Deterministic page excerpt · no AI model or API key/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Method")).toHaveValue("extractive-v1");
+    expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
+    await waitFor(() => expect(api.updateAiSettings).toHaveBeenCalledWith({
+      provider_path: "local_demo", provider: "extractive", model: "extractive-v1",
+    }));
+  });
+
   it("shows loading while both authenticated requests are pending", () => {
     const pending = new Promise<never>(() => {});
     show(
