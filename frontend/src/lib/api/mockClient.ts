@@ -223,6 +223,21 @@ export function createMockClient(getUserId: () => string | null): ApiClient {
       owner();
       throw new ApiError(409, "PROVIDER_UNAVAILABLE", "No AI provider is connected in demo mode.");
     },
+    async getAiCredentials() {
+      owner();
+      return delay({ credentials: [
+        { provider: "openai" as const, configured: false },
+        { provider: "anthropic" as const, configured: false },
+      ] });
+    },
+    async upsertAiCredential() {
+      owner();
+      throw new ApiError(409, "PROVIDER_UNAVAILABLE", "API keys cannot be configured in demo mode.");
+    },
+    async deleteAiCredential() {
+      owner();
+      throw new ApiError(409, "PROVIDER_UNAVAILABLE", "API keys cannot be configured in demo mode.");
+    },
     async listWorkers(pagination: { limit?: number; offset?: number } = {}) {
       const me = owner();
       const db = load();

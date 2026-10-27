@@ -157,6 +157,17 @@ export interface AiSettings {
   available: boolean;
 }
 
+export type AiCredentialProvider = "openai" | "anthropic";
+
+export interface AiCredentialStatus {
+  provider: AiCredentialProvider;
+  configured: boolean;
+}
+
+export interface AiCredentialStatuses {
+  credentials: AiCredentialStatus[];
+}
+
 export interface WorkerInput {
   name: string;
   kind: WorkerKind;
@@ -178,6 +189,9 @@ export interface ApiClient {
   getAiProviders(): Promise<AiProviderCatalog>;
   getAiSettings(): Promise<AiSettings>;
   updateAiSettings(input: AiSettingsInput): Promise<AiSettings>;
+  getAiCredentials(): Promise<AiCredentialStatuses>;
+  upsertAiCredential(provider: AiCredentialProvider, input: { api_key: string }): Promise<AiCredentialStatus>;
+  deleteAiCredential(provider: AiCredentialProvider): Promise<AiCredentialStatus>;
   listWorkers(pagination?: { limit?: number; offset?: number }): Promise<Page<Worker>>;
   getWorker(id: string): Promise<Worker>;
   createWorker(input: WorkerInput): Promise<Worker>;

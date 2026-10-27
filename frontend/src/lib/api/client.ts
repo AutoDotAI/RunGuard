@@ -1,6 +1,6 @@
 // The only app-data transport. The server owns authentication and record ownership.
 import { apiBaseUrl, auth } from "@/lib/auth";
-import { ApiError, type ApiClient } from "./types";
+import { ApiError, type AiCredentialProvider, type ApiClient } from "./types";
 
 type Query = Record<string, string | number | undefined>;
 
@@ -16,6 +16,13 @@ function pathWithQuery(path: string, query?: Query): string {
 
 function resourceId(id: string): string {
   return encodeURIComponent(id);
+}
+
+function credentialProvider(provider: AiCredentialProvider): string {
+  if (provider !== "openai" && provider !== "anthropic") {
+    throw new ApiError(422, "VALIDATION_ERROR", "Unsupported API key provider.");
+  }
+  return provider;
 }
 
 async function request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
@@ -69,6 +76,9 @@ export const api: ApiClient = {
   getAiProviders: () => request("GET", "/ai/providers"),
   getAiSettings: () => request("GET", "/ai/settings"),
   updateAiSettings: (input) => request("PUT", "/ai/settings", input),
+  getAiCredentials: () => request("GET", "/ai/credentials"),
+  upsertAiCredential: async (provider, input) => request("PUT", `/ai/credentials/${credentialProvider(provider)}`, input),
+  deleteAiCredential: async (provider) => request("DELETE", `/ai/credentials/${credentialProvider(provider)}`),
   listWorkers: (pagination = {}) => request("GET", "/workers", undefined, pagination),
   getWorker: (id) => request("GET", `/workers/${resourceId(id)}`),
   createWorker: (input) => request("POST", "/workers", input),
