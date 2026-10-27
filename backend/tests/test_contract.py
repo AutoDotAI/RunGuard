@@ -229,7 +229,13 @@ def test_ai_settings_contract_is_authenticated_bounded_and_secret_free():
         example = operation["responses"]["200"]["content"]["application/json"]["example"]
         assert "api_key" not in str(example).lower()
     update = operations(document)[("put", "/api/v1/ai/settings")]
-    assert {"200", "401", "409", "422", "500"} == set(update["responses"])
+    assert {"200", "401", "409", "422", "500", "503"} == set(update["responses"])
+    for key in (("get", "/api/v1/ai/providers"),
+                ("get", "/api/v1/ai/settings"),
+                ("put", "/api/v1/ai/settings")):
+        operation = operations(document)[key]
+        assert schema_of_response(document, operation, "503") == {
+            "$ref": "#/components/schemas/ErrorResponse"}
     assert update["requestBody"]["content"]["application/json"]["example"] == {
         "provider_path": "local_demo", "provider": "extractive", "model": "extractive-v1"
     }
