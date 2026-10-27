@@ -7,7 +7,8 @@ from typing import Callable
 
 from app import outbound
 from app import observability
-from app.provider_config import DEMO_LABEL, DEMO_MODEL, has_model_credential
+from app.provider_config import (DEMO_LABEL, DEMO_MODEL, SELF_SERVICE_API_MODELS,
+                                 has_model_credential)
 
 from .host_model import HostCLIClient, ModelProviderUnavailable
 from .llm import LLMClient, LiteLLMClient
@@ -91,28 +92,40 @@ def _extractive_summary(page_text: str) -> str:
 
 
 def _provider(snapshot: RunSnapshot, llm: LLMClient | None,
-              model: str | None) -> tuple[LLMClient, str] | None:
+              model: str | None,
+              credential_lookup: Callable[[str, str], str | None] | None = None
+              ) -> tuple[LLMClient, str, str | None] | None:
     """Select one server-side provider; never fall back after a failure."""
     if llm is not None or model is not None:
         # Explicit injection preserves the deterministic test/integration path.
         label = model if model is not None else snapshot.config.get("model", os.environ.get("LLM_MODEL", ""))
-        return (llm or LiteLLMClient(), label) if label else None
+        return (llm or LiteLLMClient(), label, None) if label else None
     config = snapshot.config
     if "provider_path" in config or "provider" in config:
         path, provider, label = (config.get(key) for key in ("provider_path", "provider", "model"))
         if not isinstance(label, str) or not label:
             return None
         if path == "backend_cli" and provider in {"codex", "claude"}:
-            return HostCLIClient(provider), label
+            return HostCLIClient(provider), label, None
         if path == "api" and provider == "litellm":
-            return (LiteLLMClient(), label) if has_model_credential(label, os.environ) else None
+            # Current self-service model choices require the run owner's key.
+            # Legacy server-configured models remain available via the old
+            # environment path; they never receive another account's key.
+            owner_provider = next((name for name, models in SELF_SERVICE_API_MODELS.items()
+                                   if label in models), None)
+            if owner_provider is not None:
+                if credential_lookup is None or snapshot.owner_user_id is None:
+                    return None
+                api_key = credential_lookup(snapshot.owner_user_id, owner_provider)
+                return (LiteLLMClient(), label, api_key) if api_key else None
+            return (LiteLLMClient(), label, None) if has_model_credential(label, os.environ) else None
         return None
     choice = os.environ.get("RUNGUARD_MODEL_PROVIDER", "codex").strip().lower()
     if choice in {"codex", "claude"}:
-        return HostCLIClient(choice), f"{choice}-cli"
+        return HostCLIClient(choice), f"{choice}-cli", None
     if choice == "litellm":
         label = os.environ.get("LLM_MODEL", "").strip()
-        return (LiteLLMClient(), label) if label and has_model_credential(label, os.environ) else None
+        return (LiteLLMClient(), label, None) if label and has_model_credential(label, os.environ) else None
     return None
 
 
@@ -120,6 +133,7 @@ def summarize(snapshot: RunSnapshot, *,
               fetch: Callable[[str], outbound.FetchResponse] | None = None,
               llm: LLMClient | None = None,
               model: str | None = None,
+              credential_lookup: Callable[[str, str], str | None] | None = None,
               log: Callable[[str, str, str], None] | None = None) -> HandlerOutcome:
     emit = log or (lambda _event, _message, _level: None)
     emit("URL_VALIDATION_STARTED", "Validating configured URL", "INFO")
@@ -195,19 +209,26 @@ def summarize(snapshot: RunSnapshot, *,
         return HandlerOutcome({"source_url": snapshot.url, "page_title": title,
                                "summary": summary, "model": DEMO_LABEL,
                                "input_was_truncated": truncated}, http_status=response.status)
-    selected = _provider(snapshot, llm, model)
+    try:
+        selected = _provider(snapshot, llm, model, credential_lookup)
+    except Exception:
+        # Missing encryption material or corrupt ciphertext must never be
+        # surfaced through a run log, span, API response, or provider call.
+        selected = None
     if selected is None:
         emit("MODEL_PROVIDER_UNAVAILABLE", "No summarization provider is configured", "ERROR")
         return HandlerOutcome(None, http_status=response.status,
                               error_code="MODEL_PROVIDER_UNAVAILABLE",
-                              error_message="No model provider is configured. Use a host Codex or Claude worker, or configure LiteLLM on the server.")
-    client, selected_model = selected
+                              error_message="Selected model is unavailable. Add its API key in AI settings or connect a host worker.")
+    client, selected_model, api_key = selected
     emit("LLM_REQUEST_STARTED", f"Requesting summary with {PROMPT_VERSION}", "INFO")
     try:
         with observability.tracer().start_as_current_span("llm.summarize"):
-            summary = client.complete(
-                model=selected_model, system=SYSTEM_PROMPT,
-                user=f"Webpage evidence ({PROMPT_VERSION}):\n{page_text}")
+            request = {"model": selected_model, "system": SYSTEM_PROMPT,
+                       "user": f"Webpage evidence ({PROMPT_VERSION}):\n{page_text}"}
+            if api_key is not None:
+                request["api_key"] = api_key
+            summary = client.complete(**request)
         if not isinstance(summary, str) or not summary.strip():
             raise ValueError("Empty model response")
     except ModelProviderUnavailable:

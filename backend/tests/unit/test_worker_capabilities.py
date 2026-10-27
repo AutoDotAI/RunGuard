@@ -6,11 +6,11 @@ from types import SimpleNamespace
 from app.workers import runner
 
 
-def test_disabled_model_worker_publishes_only_extracts_and_probes_no_cli(monkeypatch):
+def test_disabled_cli_worker_advertises_api_adapter_without_probing_cli(monkeypatch):
     monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "disabled")
     monkeypatch.setattr(runner.shutil, "which", lambda _name: (_ for _ in ()).throw(
         AssertionError("disabled worker must not probe CLIs")))
-    assert runner._worker_capabilities() == {"providers": ["extractive"]}
+    assert runner._worker_capabilities() == {"providers": ["extractive", "litellm"]}
 
 
 def test_capabilities_need_usable_cli_or_server_key_and_publish_no_secrets(monkeypatch):
@@ -28,7 +28,7 @@ def test_capabilities_need_usable_cli_or_server_key_and_publish_no_secrets(monke
 
     monkeypatch.setattr(runner.subprocess, "run", status)
     result = runner._worker_capabilities()
-    assert result == {"providers": ["extractive", "codex", "litellm"]}
+    assert result == {"providers": ["extractive", "litellm", "codex"]}
     assert len(seen) == 2
     assert all(kwargs["timeout"] == runner.CLI_STATUS_TIMEOUT_SECONDS for _, kwargs in seen)
     assert all("OPENAI_API_KEY" not in kwargs["env"] for _, kwargs in seen)
@@ -47,7 +47,7 @@ def test_slow_claude_login_status_is_available_without_model_call(monkeypatch):
         return SimpleNamespace(returncode=0 if command[0] == "claude" else 1)
 
     monkeypatch.setattr(runner.subprocess, "run", status)
-    assert runner._worker_capabilities() == {"providers": ["extractive", "claude"]}
+    assert runner._worker_capabilities() == {"providers": ["extractive", "litellm", "claude"]}
     assert [command for command, _ in seen] == [
         ["codex", "login", "status"], ["claude", "auth", "status"]]
     assert all(kwargs["timeout"] < 20 for _, kwargs in seen)
@@ -63,5 +63,5 @@ def test_failed_and_missing_cli_remain_unavailable(monkeypatch):
         return SimpleNamespace(returncode=1)
 
     monkeypatch.setattr(runner.subprocess, "run", status)
-    assert runner._worker_capabilities() == {"providers": ["extractive"]}
+    assert runner._worker_capabilities() == {"providers": ["extractive", "litellm"]}
     assert seen == [["codex", "login", "status"]]

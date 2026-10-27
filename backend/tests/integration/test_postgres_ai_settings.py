@@ -84,21 +84,24 @@ def test_selected_model_survives_edit_and_runs_through_postgres_queue(postgres_u
     from app import outbound
     from app.ai_credentials import ensure_model_key
     from app.db import RunRecord
+    from app.workers import runner as runner_module
     from app.workers.runner import HandlerOutcome, WorkerRunner
-    from app.workers.url_summarizer import summarize
 
+    monkeypatch.setattr(runner_module, "POSTGRES_WORKER_LOCK_KEY", uuid4().int % (2**63 - 1))
     monkeypatch.setenv("RUNGUARD_ALERT_INTERVAL_SECONDS", "0")
     model_dir = tmp_path / "model"
     model_dir.mkdir(mode=0o700)
     monkeypatch.setenv("RUNGUARD_MODEL_ENCRYPTION_KEY_FILE", str(model_dir / "model_encryption_key"))
-    monkeypatch.setenv("OPENAI_API_KEY", "test-only-never-sent")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "disabled")
     app = create_app(secret=SECRET, database_url=postgres_url)
     seen = []
     monkeypatch.setattr("app.workers.url_summarizer.LiteLLMClient.complete",
-                        lambda self, **kwargs: seen.append(kwargs["model"]) or
+                        lambda self, **kwargs: seen.append(kwargs) or
                         "# Article\n- Fact one.\n- Fact two.\n- Fact three.")
     body = b"<html><body><article>" + b"A readable article with facts and context. " * 5 + b"</article></body></html>"
+    monkeypatch.setattr(outbound, "fetch", lambda _url:
+                        outbound.FetchResponse(200, {"content-type": "text/html"}, body))
     with TestClient(app) as client:
         ensure_model_key(app.state.users, model_dir)
         app.state.ai_settings.capability_reader = lambda: {"litellm", "codex"}
@@ -119,7 +122,9 @@ def test_selected_model_survives_edit_and_runs_through_postgres_queue(postgres_u
         assert queued.status_code == 202, queued.text
         run_id = queued.json()["run_id"]
         with app.state.users.sessions() as session:
-            assert json.loads(session.get(RunRecord, run_id).config_snapshot_json)["model"] == choice["model"]
+            snapshot = session.get(RunRecord, run_id).config_snapshot_json
+            assert json.loads(snapshot)["model"] == choice["model"]
+            assert "sk-test-only-never-sent" not in snapshot
         assert client.put("/api/v1/ai/settings", json={"provider_path": "backend_cli",
                                                            "provider": "codex", "model": "default"},
                           headers=headers).status_code == 200
@@ -136,13 +141,14 @@ def test_selected_model_survives_edit_and_runs_through_postgres_queue(postgres_u
             original = session.get(RunRecord, run_id)
             repeated = session.get(RunRecord, retry_id)
             assert repeated.config_snapshot_json == original.config_snapshot_json
-        with WorkerRunner(postgres_url, {"url_summarizer": lambda snapshot:
-                          summarize(snapshot, fetch=lambda _url: outbound.FetchResponse(
-                              200, {"content-type": "text/html"}, body))},
+        with WorkerRunner(postgres_url,
                           capability_reporter=lambda: {"providers": ["litellm"]}) as runner:
             assert runner.run_once()
         finished = client.get(f"/api/v1/runs/{retry_id}", headers=headers)
         assert finished.status_code == 200
         assert finished.json()["status"] == "succeeded"
         assert finished.json()["result"]["model"] == choice["model"]
-        assert seen == [choice["model"]]
+        assert len(seen) == 1
+        assert seen[0]["model"] == choice["model"]
+        assert seen[0]["api_key"] == "sk-test-only-never-sent"
+        assert "sk-test-only-never-sent" not in finished.text

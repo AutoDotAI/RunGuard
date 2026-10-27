@@ -11,6 +11,7 @@ class RunSnapshot:
     url: str
     config_json: str
     traceparent: str | None = None
+    owner_user_id: str | None = None
 
     @property
     def config(self) -> dict:
