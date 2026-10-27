@@ -103,8 +103,8 @@ make postgres-recovery-smoke
 ```
 
 These Make targets require the configured PostgreSQL service. Keep the
-original SQLite volume and stable signing
-secret; data written after cutover is absent from that old snapshot.
+original SQLite volume and stable signing secret; data written after cutover
+is absent from that old snapshot.
 
 ## Observability and incidents
 
