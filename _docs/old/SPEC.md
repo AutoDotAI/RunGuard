@@ -63,6 +63,16 @@
 > start; existing ignored configuration and imported PostgreSQL data must be
 > preserved. Containers cannot infer host CLI subscription credentials.
 
+> **Responder repository amendment — 2026-10-27:** The owner requested that
+> the bounded incident responder live in a separate public
+> `AutoDotAI/incident-response` repository. That repository owns the responder
+> policy and command-line implementation; RunGuard retains its alert schema,
+> PostgreSQL persistence, demo gate, and a small integration adapter. The
+> optional responder profile pins an immutable external package revision or
+> image digest. Normal `docker compose up --build` must not fetch, build, or
+> require the responder repository. Moving the code does not expand its fixed
+> inspections, demo-only `resume_demo_worker` action, or access to secrets.
+
 ### Current acceptance target for the storage change
 
 - PostgreSQL 16+ is the **default** database for API, worker, migrations,
@@ -1085,6 +1095,16 @@ A minimal incident-response agent may be implemented through LiteLLM using **fix
 - For the special **demo-only paused-worker failure**, allow exactly one audited remediation: `resume_demo_worker`. No arbitrary shell, deployment commands, code edits, secrets access, or broad infrastructure permissions.
 - The agent must not retry failed user jobs automatically; **manual retry remains the product rule**.
 - Audit every suggestion/action and verify queue processing resumes. In production, require explicit operator approval before remediation.
+
+The local bounded responder must be supplied by the separate public
+`AutoDotAI/incident-response` package. Its policy and CLI are tested in that
+repository against fake storage/action adapters; RunGuard supplies only the
+PostgreSQL and demo-control integration. The optional local responder profile
+uses a pinned revision and remains reproducible from a clean RunGuard clone.
+The normal website, API, and job worker have no build-time or startup
+dependency on the external package. Existing incident and action records,
+owned-alert checks, fixed evidence fields, and idempotent audited remediation
+must survive the split. The demo action stays unavailable in the normal stack.
 
 **Rubric trade-off:** A read-only diagnosis demonstrates investigation but **may not earn** the on-call criterion's full credit, which explicitly asks for an agent that wakes on an alert and fixes an issue. The narrowly bounded demo remediation addresses that criterion without undermining manual job retry.
 
