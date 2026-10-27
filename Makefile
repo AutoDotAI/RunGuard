@@ -17,7 +17,7 @@ OBS_COMPOSE = $(DOCKER) compose -p "$$OBS_PROJECT" -f compose.yaml -f compose.ob
 STALL_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability
 RESPONDER_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability --profile responder
 
-.PHONY: help install install-backend install-frontend test test-backend typecheck test-frontend build build-frontend build-images check security-check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke postgres-smoke postgres-import postgres-backup postgres-restore postgres-recovery-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry
+.PHONY: help install install-backend install-frontend test test-backend test-postgres test-frontend typecheck build build-frontend build-images check security-check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke postgres-smoke postgres-import postgres-backup postgres-restore postgres-recovery-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry
 
 help: ## List every Makefile target; no install or service start
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-24s %s\n", $$1, $$2}' Makefile
@@ -31,6 +31,9 @@ install-frontend: ## Install frontend dependencies with package-lock.json
 test: test-backend test-frontend ## Run offline backend and frontend suites
 test-backend: ## Run backend pytest (dependencies must be installed)
 	cd backend && $(UV) run --no-sync pytest -q
+test-postgres: ## Run real PostgreSQL integration tests; set RUNGUARD_TEST_POSTGRES_URL to a disposable DB
+	@test -n "$$RUNGUARD_TEST_POSTGRES_URL" || { echo 'Set RUNGUARD_TEST_POSTGRES_URL to a disposable PostgreSQL database' >&2; exit 2; }
+	cd backend && $(UV) run --no-sync pytest -q tests/integration/test_postgres_*.py tests/integration/test_sqlite_import.py
 test-frontend: ## Run frontend Vitest suite
 	cd frontend && $(NPM) test
 typecheck: ## Type-check frontend TypeScript
