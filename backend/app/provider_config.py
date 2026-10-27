@@ -7,6 +7,10 @@ from typing import Mapping
 MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
 DEMO_MODEL = "extractive-v1"
 DEMO_LABEL = "local demo — no AI model"
+SELF_SERVICE_API_MODELS = {
+    "openai": ("openai/gpt-4.1-mini",),
+    "anthropic": ("anthropic/claude-sonnet-4-6",),
+}
 API_KEY_NAMES = {
     "openai": ("OPENAI_API_KEY",),
     "anthropic": ("ANTHROPIC_API_KEY",),

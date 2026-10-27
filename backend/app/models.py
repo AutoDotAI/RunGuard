@@ -1,7 +1,7 @@
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 
 WorkerKind = Literal["website_monitor", "url_summarizer"]
@@ -67,6 +67,19 @@ class AiSettingsInput(StrictModel):
 
 class AiSettings(AiSettingsInput):
     available: bool
+
+
+class AiCredentialWrite(StrictModel):
+    api_key: SecretStr = Field(min_length=8, max_length=512)
+
+
+class AiCredentialStatus(StrictModel):
+    provider: Literal["openai", "anthropic"]
+    configured: bool
+
+
+class AiCredentialStatuses(StrictModel):
+    credentials: list[AiCredentialStatus]
 
 
 class WorkerCreate(StrictModel):
