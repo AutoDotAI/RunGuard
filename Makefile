@@ -17,7 +17,7 @@ OBS_COMPOSE = $(DOCKER) compose -p "$$OBS_PROJECT" -f compose.yaml -f compose.ob
 STALL_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability
 RESPONDER_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability --profile responder
 
-.PHONY: help install install-backend install-frontend test test-backend test-frontend typecheck build build-frontend build-images check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke postgres-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry cd-check rollback-rehearsal
+.PHONY: help install install-backend install-frontend test test-backend test-frontend typecheck build build-frontend build-images check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke postgres-smoke postgres-backup postgres-restore postgres-recovery-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry cd-check rollback-rehearsal
 
 help: ## List every Makefile target; no install or service start
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-24s %s\n", $$1, $$2}' Makefile
@@ -74,6 +74,14 @@ compose-smoke: ## Run API-to-worker smoke (uses example.com outbound HTTPS)
 	$(PYTHON) scripts/compose_smoke.py
 postgres-smoke: ## Check isolated PostgreSQL health and restart persistence
 	$(PYTHON) scripts/postgres_compose_smoke.py
+postgres-backup: ## Save private PostgreSQL dump; set ARCHIVE_PATH=private-backups/name.dump
+	@test -n "$$ARCHIVE_PATH" || { echo 'Set ARCHIVE_PATH=private-backups/name.dump' >&2; exit 2; }
+	bash scripts/local_pg_recovery.sh backup "$$ARCHIVE_PATH"
+postgres-restore: ## Restore dump into a NEW database; set ARCHIVE_PATH and RESTORE_DB
+	@test -n "$$ARCHIVE_PATH" && test -n "$$RESTORE_DB" || { echo 'Set ARCHIVE_PATH and RESTORE_DB' >&2; exit 2; }
+	bash scripts/local_pg_recovery.sh restore "$$ARCHIVE_PATH" "$$RESTORE_DB"
+postgres-recovery-smoke: ## Verify isolated pg_dump/pg_restore login and history
+	cd backend && $(UV) run --no-sync python ../scripts/postgres_recovery_smoke.py
 
 observability-up: ## Add loopback Grafana/collector to the existing local app
 	$(OBS_COMPOSE) up --build -d
