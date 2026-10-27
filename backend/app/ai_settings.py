@@ -89,8 +89,13 @@ class AiSettingsService:
         connected = self.capability_reader()
         codex = _models(environ.get("RUNGUARD_CODEX_MODELS"), include_default=True)
         claude = _models(environ.get("RUNGUARD_CLAUDE_MODELS"), include_default=True)
-        api_models = _models(environ.get("RUNGUARD_LITELLM_MODELS") or environ.get("LLM_MODEL"))
-        api_has_key = bool(api_models) and all(_credential_for(item.id, environ) for item in api_models)
+        configured_api_models = _models(environ.get("RUNGUARD_LITELLM_MODELS") or environ.get("LLM_MODEL"))
+        credentialed_api_models = [item for item in configured_api_models
+                                   if _credential_for(item.id, environ)]
+        # The schema has availability at provider level, so do not advertise
+        # a model that this server cannot authenticate while another works.
+        api_models = credentialed_api_models or configured_api_models
+        api_has_key = bool(credentialed_api_models)
         providers = []
         for provider, label, models in (("codex", "Codex CLI", codex),
                                         ("claude", "Claude CLI", claude)):

@@ -113,3 +113,22 @@ def test_litellm_requires_worker_and_credential_for_allowlisted_model(tmp_path, 
         assert saved.json() == {**choice, "available": True}
         assert "never-return-this-key" not in saved.text
         assert "never-return-this-key" not in client.get("/api/v1/ai/providers", headers=_headers(token)).text
+
+
+def test_litellm_catalog_filters_models_without_matching_credentials(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    app.state.ai_settings.capability_reader = lambda: {"litellm"}
+    monkeypatch.setenv("RUNGUARD_LITELLM_MODELS", "openai/gpt-4o-mini,anthropic/claude-3-haiku")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-key")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with TestClient(app) as client:
+        token = _register(client, "mixed@example.com")
+        providers = client.get("/api/v1/ai/providers", headers=_headers(token)).json()["providers"]
+        api = next(provider for provider in providers if provider["provider"] == "litellm")
+        assert api["available"] is True
+        assert [model["id"] for model in api["models"]] == ["openai/gpt-4o-mini"]
+        unavailable_model = {"provider_path": "api", "provider": "litellm",
+                             "model": "anthropic/claude-3-haiku"}
+        result = client.put("/api/v1/ai/settings", json=unavailable_model, headers=_headers(token))
+        assert result.status_code == 422
+        assert result.json()["error"]["code"] == "VALIDATION_ERROR"
