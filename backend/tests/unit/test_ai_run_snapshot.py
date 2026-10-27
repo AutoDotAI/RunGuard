@@ -73,6 +73,7 @@ def test_unavailable_selection_creates_no_run_and_monitor_ignores_settings(store
 
 def test_snapshot_selects_exact_litellm_model_without_host_fallback(monkeypatch):
     seen = []
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-key")
     monkeypatch.setattr("app.workers.url_summarizer.LiteLLMClient.complete",
                         lambda self, **kwargs: seen.append(kwargs) or
                         "# Article\n- Fact one.\n- Fact two.\n- Fact three.")
@@ -117,6 +118,47 @@ def test_invalid_selected_route_does_not_fall_back_to_environment(monkeypatch):
     result = summarize(snapshot, fetch=lambda _url: FetchResponse(200, {"content-type": "text/html"}, body))
     assert result.error_code is not None
     assert result.result is None
+
+
+def test_selected_api_key_removed_after_enqueue_fails_before_model_call(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "codex")
+    monkeypatch.setattr("app.workers.url_summarizer.LiteLLMClient.complete",
+                        lambda self, **kwargs: pytest.fail("API provider was called"))
+    monkeypatch.setattr("app.workers.url_summarizer.HostCLIClient.complete",
+                        lambda self, **kwargs: pytest.fail("Host fallback"))
+    snapshot = RunSnapshot("run-id", "url_summarizer", "https://example.com/article",
+                           json.dumps({"provider_path": "api", "provider": "litellm",
+                                       "model": "openai/gpt-4o-mini"}))
+    body = b"<article>" + b"A readable recovery report with concrete facts. " * 5 + b"</article>"
+    events = []
+    result = summarize(snapshot, fetch=lambda _url: FetchResponse(
+        200, {"content-type": "text/html"}, body),
+        log=lambda event, message, level: events.append((event, message, level)))
+    assert result.error_code == "MODEL_PROVIDER_UNAVAILABLE"
+    assert result.result is None
+    assert "LLM_REQUEST_STARTED" not in [event for event, _, _ in events]
+
+
+def test_selected_host_cli_removed_after_enqueue_has_distinct_error(monkeypatch):
+    from app.workers.host_model import ModelProviderUnavailable
+
+    monkeypatch.setattr("app.workers.url_summarizer.HostCLIClient.complete",
+                        lambda self, **kwargs: (_ for _ in ()).throw(
+                            ModelProviderUnavailable("test private path")))
+    monkeypatch.setattr("app.workers.url_summarizer.LiteLLMClient.complete",
+                        lambda self, **kwargs: pytest.fail("API fallback"))
+    snapshot = RunSnapshot("run-id", "url_summarizer", "https://example.com/article",
+                           json.dumps({"provider_path": "backend_cli", "provider": "codex",
+                                       "model": "default"}))
+    body = b"<article>" + b"A readable recovery report with concrete facts. " * 5 + b"</article>"
+    events = []
+    result = summarize(snapshot, fetch=lambda _url: FetchResponse(
+        200, {"content-type": "text/html"}, body),
+        log=lambda event, message, level: events.append((event, message, level)))
+    assert result.error_code == "MODEL_PROVIDER_UNAVAILABLE"
+    assert "test private path" not in str(result) + str(events)
+    assert "MODEL_PROVIDER_UNAVAILABLE" in [event for event, _, _ in events]
 
 
 @pytest.mark.parametrize("provider,env,model", [

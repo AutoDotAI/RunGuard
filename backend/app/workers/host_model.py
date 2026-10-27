@@ -19,6 +19,10 @@ CLI_DEADLINE_SECONDS = 50
 _MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
 
 
+class ModelProviderUnavailable(RuntimeError):
+    """The selected host CLI disappeared before this queued run executed."""
+
+
 class HostCLIClient:
     def __init__(self, provider: str):
         if provider not in {"codex", "claude"}:
@@ -62,7 +66,7 @@ class HostCLIClient:
                         start_new_session=True, close_fds=True, env=_cli_environment(),
                     )
                 except OSError as exc:
-                    raise RuntimeError("Host model CLI unavailable") from exc
+                    raise ModelProviderUnavailable("Host model CLI unavailable") from exc
                 try:
                     output = _read_bounded(process)
                 except BaseException:

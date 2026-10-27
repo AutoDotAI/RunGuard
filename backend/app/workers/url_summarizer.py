@@ -7,9 +7,10 @@ from typing import Callable
 
 from app import outbound
 from app import observability
+from app.provider_config import has_model_credential
 
+from .host_model import HostCLIClient, ModelProviderUnavailable
 from .llm import LLMClient, LiteLLMClient
-from .host_model import HostCLIClient
 from .types import HandlerOutcome, RunSnapshot
 
 
@@ -83,7 +84,7 @@ def _provider(snapshot: RunSnapshot, llm: LLMClient | None,
         if path == "backend_cli" and provider in {"codex", "claude"}:
             return HostCLIClient(provider), label
         if path == "api" and provider == "litellm":
-            return LiteLLMClient(), label
+            return (LiteLLMClient(), label) if has_model_credential(label, os.environ) else None
         return None
     choice = os.environ.get("RUNGUARD_MODEL_PROVIDER", "codex").strip().lower()
     if choice in {"codex", "claude"}:
@@ -179,6 +180,11 @@ def summarize(snapshot: RunSnapshot, *,
                 user=f"Webpage evidence ({PROMPT_VERSION}):\n{page_text}")
         if not isinstance(summary, str) or not summary.strip():
             raise ValueError("Empty model response")
+    except ModelProviderUnavailable:
+        emit("MODEL_PROVIDER_UNAVAILABLE", "Selected host model CLI is unavailable", "ERROR")
+        return HandlerOutcome(None, http_status=response.status,
+                              error_code="MODEL_PROVIDER_UNAVAILABLE",
+                              error_message="The selected host model CLI is unavailable. Reconnect the host worker before retrying.")
     except Exception:
         emit("LLM_REQUEST_FAILED", "Summarization provider failed", "ERROR")
         return HandlerOutcome(None, http_status=response.status,

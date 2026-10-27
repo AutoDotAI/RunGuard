@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from app import outbound
-from app.workers.host_model import HostCLIClient
+from app.workers.host_model import HostCLIClient, ModelProviderUnavailable
 from app.workers.types import RunSnapshot
 from app.workers.url_summarizer import summarize
 
@@ -79,6 +79,14 @@ def test_unconfigured_provider_fails_without_cli_or_key(monkeypatch, choice):
     outcome = summarize(SNAPSHOT, fetch=lambda _url: PAGE)
     assert outcome.error_code == "MODEL_PROVIDER_UNAVAILABLE"
     assert outcome.result is None
+
+
+def test_selected_host_cli_disappears_before_execution(tmp_path, monkeypatch):
+    # PATH contains no CLI, so this cannot accidentally call an installed one.
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(ModelProviderUnavailable):
+        HostCLIClient("codex").complete(model="default", system="summarize",
+                                         user="safe article evidence")
 
 
 @pytest.mark.parametrize("name", ["codex", "claude"])
