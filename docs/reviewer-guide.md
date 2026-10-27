@@ -37,12 +37,15 @@ of live paid services.
 1. Sign up, create a Website Monitor worker for a public URL, and launch it.
    Inspect queued/running/terminal states and append-only logs in the run
    detail page. Target/network failure still has a visible error and logs.
-2. Open the AI settings page to inspect available host Codex, host Claude,
-   and server-side API-key models. Only configured and currently available
-   paths can be saved. Credentials are never entered in the browser.
+2. Open the AI settings page. A fresh account defaults to **local demo — no AI
+   model**; the page refreshes availability if the worker is still starting.
+   Host Codex, host Claude, and server-side LiteLLM are optional real-model
+   choices only when configured and available. Credentials are never entered
+   in the browser.
 3. Create a URL Summarizer worker, launch it with a bounded HTML URL, and
-   inspect the result or sanitized failure. An oversized PDF fails before a
-   model call. Manual Retry creates a new run from the original snapshot.
+   inspect the short copied excerpt, explicit no-AI label, and step logs.
+   An oversized PDF fails before summary generation. Manual Retry creates a
+   new run from the original provider/model snapshot.
 4. Run the isolated alert and responder drill described in
    [observability](observability.md). Its automatic action is limited to
    resuming one demo worker and never retries a user run.
