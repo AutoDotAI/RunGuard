@@ -7,11 +7,13 @@ A separate Python process claims queued runs; stopping it leaves new runs
 queued. Start exactly one worker against the local database. Keep
 `RUNGUARD_AUTH_SECRET` stable across restarts and outside Git.
 
-The worker implements `website_monitor` and `url_summarizer`. The latter can
-use a host Codex CLI login by default, host Claude CLI, or a configured
-server-side LiteLLM key. A missing provider is reported separately from a
-failed attempted model request. No provider fallback or automatic job retry
-occurs. See [model provider setup](../docs/model-providers.md).
+The worker implements `website_monitor` and `url_summarizer`. Fresh accounts
+default to the **local demo — no AI model** summarizer, which copies a bounded
+excerpt from readable HTML in the normal Compose worker. Host Codex CLI,
+host Claude CLI, and server-side LiteLLM are optional real-model paths selected
+through AI settings when available. A missing provider is reported separately
+from a failed attempted model request. No provider fallback or automatic job
+retry occurs. See [model provider setup](../docs/model-providers.md).
 
 ## Local source run
 

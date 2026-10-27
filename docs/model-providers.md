@@ -1,13 +1,22 @@
 # Local model providers
 
 URL Summarizer runs in a separate worker; Website Monitor never calls a
-model. Signed-in users choose an available provider path and model on the AI
-settings page. The API reports only models for which the selected host worker
-or server-side LiteLLM configuration is ready. A queued run saves the chosen
-provider/model snapshot; later settings changes and manual retry do not
-silently switch models. There is no automatic provider fallback or job retry.
+model. Signed-in users choose an available summary method on the AI settings
+page. For real models, the API reports availability from the host worker or
+server-side LiteLLM configuration. A queued run saves the chosen provider
+and model snapshot; later settings changes and manual retry do not silently
+switch methods or models. There is no automatic provider fallback or job retry.
 
-## Host Codex or Claude CLI (default path)
+## Default local demo — no AI model
+
+A fresh account selects the local extractive demo by default. The normal
+Compose worker fetches bounded readable HTML and saves a short copied excerpt;
+the result and logs identify it as **local demo — no AI model**. No host CLI,
+API key, model download, or paid request is needed. The AI settings page shows
+worker availability and refreshes while the worker starts. Existing saved
+real-provider choices and queued run snapshots are not changed to the demo.
+
+## Optional host Codex or Claude CLI
 
 Install and sign in to Codex CLI or Claude CLI on the machine running the
 worker. Keep CLI login material outside Docker and Git. The local Compose
@@ -23,7 +32,7 @@ make worker-codex
 The Make target stops the container worker, reads the private Compose database
 credential without printing it, and launches exactly one host worker. It works
 whether a fresh project generated credentials in its named volume or an older
-project uses its existing ignored `.env`. Codex is the default. Claude is selectable through the
+project uses its existing ignored `.env`. Select Codex or Claude through the
 AI settings page when the host worker advertises it. For named models, the
 worker passes only a backend-allowlisted fixed `--model` argument; the
 catalog's `default` value uses the CLI's native model. CLI calls use a

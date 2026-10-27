@@ -43,15 +43,21 @@ The guarded Makefile commands are `make postgres-import` (requires
 
 ## Model selection
 
-The URL Summarizer offers host Codex CLI by default, host Claude CLI, and an
-optional server-side LiteLLM API-key path. The API and browser never receive
-CLI login files; API keys stay in the server environment. A CLI-backed worker
-runs **on the host**, using the same PostgreSQL URL as the API through the
-loopback-bound database port. After `docker compose up --build`, use
-`make worker-codex` or `make worker-claude` in another terminal; the target
-stops the container worker and reads the local credential without printing it.
-See [model provider setup](docs/model-providers.md). A model subscription
-is not an API key. No paid model call is required for tests.
+A fresh account uses **local demo — no AI model** by default for URL
+Summarizer. The Compose worker copies a short excerpt from bounded readable
+HTML, so signup and a first summary need no model login or API key. This is
+an extractive demo, not a Codex, Claude, or LiteLLM response. The AI settings
+page shows when the worker is ready and refreshes availability during startup.
+
+For a real model, select host Codex CLI, host Claude CLI, or an optional
+server-side LiteLLM API-key path on that page. A CLI-backed worker runs **on
+the host**, using the same PostgreSQL URL as the API through the loopback-bound
+database port. After `docker compose up --build`, use `make worker-codex` or
+`make worker-claude` in another terminal; the target stops the container worker
+and reads the local credential without printing it. The API and browser never
+receive CLI login files; API keys stay in the server environment. See
+[model provider setup](docs/model-providers.md). A model subscription is not
+an API key. No paid model call is required for tests.
 
 ## Commands and checks
 
