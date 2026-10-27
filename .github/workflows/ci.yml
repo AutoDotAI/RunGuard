@@ -89,6 +89,8 @@ jobs:
         run: |
           test ! -e .env
           docker compose config --quiet
+          docker compose -f compose.yaml -f compose.observability.yaml --profile observability --profile responder config --format json |
+            python3 -c 'import json,sys; dependencies=json.load(sys.stdin)["services"]["responder"]["depends_on"]; assert dependencies["postgres"]["condition"] == "service_healthy"; assert dependencies["migrate"]["condition"] == "service_completed_successfully"'
       - name: Verify isolated PostgreSQL health and persistence
         run: python3 scripts/postgres_compose_smoke.py
       - name: Verify no-variable first run and existing-data upgrade

@@ -156,11 +156,17 @@ class DemoControl:
             return current
         return self._locked(operation)
 
-    def resume(self, *, require_paused: bool = False) -> dict:
+    def resume(self, *, require_paused: bool = False, expected_run_id: str | None = None,
+               expected_owner_id: str | None = None) -> dict:
         def operation():
             current = self.state()
             if current is None or current["run_id"] is None:
                 raise DemoDenied("Bind one fixture run before resuming")
+            # Validate the exact fixture while holding the demo lock. The
+            # binding may have changed since the responder reserved an action.
+            if ((expected_run_id is not None and current["run_id"] != expected_run_id)
+                    or (expected_owner_id is not None and current["owner_id"] != expected_owner_id)):
+                raise DemoDenied("Demo fixture binding changed")
             if current["status"] == "resumed":
                 if require_paused:
                     raise DemoDenied("Demo worker was already resumed")

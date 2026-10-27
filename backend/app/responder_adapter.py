@@ -181,7 +181,8 @@ class RunGuardAdapter:
         try:
             control = DemoControl(self.users.database_url)
             try:
-                state = control.resume(require_paused=True)
+                state = control.resume(require_paused=True, expected_run_id=alert.run_id,
+                                       expected_owner_id=alert.owner_id)
             finally:
                 control.close()
             return state.get("run_id") == alert.run_id and state.get("status") == "resumed"

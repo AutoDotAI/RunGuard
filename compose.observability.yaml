@@ -86,6 +86,11 @@ services:
       dockerfile: Dockerfile.responder
     profiles: [responder]
     command: ["incident-response", "--adapter", "app.responder_adapter:make_adapter", "once"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - default
       - database

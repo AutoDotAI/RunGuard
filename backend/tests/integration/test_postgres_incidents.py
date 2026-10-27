@@ -16,10 +16,11 @@ from sqlalchemy.engine import make_url
 
 from app import observability
 from app.alerting import AlertService, stamp
-from app.db import AlertRecord, IncidentRecord, ResponderActionRecord, RunRecord, UserRepository, WorkerRecord
+from app.db import (AlertRecord, IncidentRecord, ResponderActionRecord, RunLogRecord,
+                    RunRecord, UserRepository, WorkerRecord)
 from app.demo_worker import DemoControl, DemoDenied, DemoWorkerRunner
 from app.incident_ai import IncidentAI
-from app.responder_adapter import RunGuardResponder as Responder
+from app.responder_adapter import RunGuardAdapter, RunGuardResponder as Responder
 
 
 NOW = datetime(2026, 10, 26, 12, 0, tzinfo=timezone.utc)
@@ -171,6 +172,44 @@ def test_pg_paused_demo_worker_stops_background_heartbeat(postgres_url, monkeypa
             runner._touch_heartbeat()
             with runner.db.sessions() as session:
                 assert session.scalar(text("SELECT last_seen_at FROM worker_heartbeat WHERE id = 1")) is not None
+    finally:
+        control.cleanup()
+        control.close()
+        users.close()
+
+
+def test_pg_responder_cannot_resume_changed_demo_binding(postgres_url, monkeypatch):
+    monkeypatch.setenv("RUNGUARD_DEMO_MODE", "true")
+    monkeypatch.setenv("RUNGUARD_DEMO_PROJECT", "rg-demo-postgres-binding")
+    monkeypatch.setenv("RUNGUARD_COMPOSE_PROJECT", "rg-demo-postgres-binding")
+    monkeypatch.delenv("RUNGUARD_PUBLIC_MODE", raising=False)
+    users = UserRepository(postgres_url)
+    users.migrate()
+    owner = users.create("owner@example.test", "hashed-password", stamp(NOW))["id"]
+    other = users.create("other@example.test", "hashed-password", stamp(NOW))["id"]
+    first = add_run(users, owner, "queued", created=NOW)
+    assert AlertService(users).evaluate()["worker_queue_stalled"] == 1
+    with users.sessions() as session:
+        alert_id = session.scalar(select(AlertRecord.id).where(AlertRecord.run_id == first))
+        first_run = session.get(RunRecord, first)
+        first_run.status = "succeeded"
+        first_run.finished_at = stamp(NOW)
+        session.commit()
+    control = DemoControl(postgres_url)
+    try:
+        control.pause()
+        second = add_run(users, owner, "queued", created=NOW)
+        control.bind(second)
+        alert = RunGuardAdapter(users).get_owned_alert(alert_id, owner)
+        assert alert is not None and alert.run_id == first
+        assert RunGuardAdapter(users).resume_demo_worker(alert) is False
+        assert control.state() == {"status": "paused", "run_id": second, "owner_id": owner}
+        with pytest.raises(DemoDenied, match="binding changed"):
+            control.resume(require_paused=True, expected_run_id=second, expected_owner_id=other)
+        assert control.state()["status"] == "paused"
+        with users.sessions() as session:
+            assert session.scalar(select(func.count()).select_from(RunLogRecord).where(
+                RunLogRecord.run_id == second, RunLogRecord.event == "DEMO_WORKER_RESUMED")) == 0
     finally:
         control.cleanup()
         control.close()
