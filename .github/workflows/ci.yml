@@ -77,6 +77,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build API and worker image
         run: docker build -t runguard-api:ci ./backend
+      - name: Keep external responder out of normal image
+        run: docker run --rm runguard-api:ci python -c "import importlib.util; assert importlib.util.find_spec('incident_response') is None"
       - name: Build optional pinned responder image
         run: docker build -f backend/Dockerfile.responder -t runguard-responder:ci ./backend
       - name: Check external responder CLI in optional image

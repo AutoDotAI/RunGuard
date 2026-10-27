@@ -105,13 +105,13 @@ observability-down: ## Stop telemetry services; keep the local app and volumes r
 guard-demo: ## Validate DEMO_MODE=true and a dedicated DEMO_PROJECT=rg-demo-<name>
 	@test "$$DEMO_MODE" = true || { echo 'Set DEMO_MODE=true for a local demo only' >&2; exit 2; }
 	@printf '%s\n' "$$DEMO_PROJECT" | grep -Eq '^rg-demo-[a-z0-9]([a-z0-9-]*[a-z0-9])?$$' || { echo 'Set DEMO_PROJECT=rg-demo-<safe-name>' >&2; exit 2; }
-demo-stall-up: guard-demo ## Start isolated paused-worker drill stack (requires .env)
+demo-stall-up: guard-demo ## Start isolated paused-worker drill stack
 	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(STALL_COMPOSE) up --build -d
 demo-stall-smoke: guard-demo ## Run gated >60s stalled-worker alert drill
 	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(PYTHON) scripts/demo_stall_smoke.py
 demo-stall-down: guard-demo ## Stop gated drill stack without deleting its volume
 	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(STALL_COMPOSE) down
-responder-up: guard-demo ## Start isolated responder drill stack (requires .env)
+responder-up: guard-demo ## Start isolated responder drill stack
 	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(RESPONDER_COMPOSE) up --build -d
 responder-smoke: guard-demo ## Run gated alert-to-responder-to-recovery drill
 	RUNGUARD_DEMO_MODE=true RUNGUARD_DEMO_PROJECT="$$DEMO_PROJECT" RUNGUARD_ALLOWED_HOSTS=example.com COMPOSE_PROJECT_NAME="$$DEMO_PROJECT" $(PYTHON) scripts/responder_smoke.py

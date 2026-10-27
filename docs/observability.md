@@ -114,7 +114,8 @@ the run and alert for recovery. Outside the demo it records
 timeout records `needs_review`, never a false recovery. Incident and action
 records survive restart and prevent duplicate remediation.
 
-Use a fresh isolated Compose project with `.env` configured. From the repo
+Use a fresh isolated Compose project. Local database and authentication
+credentials are generated automatically when `.env` is absent. From the repo
 root, run:
 
 ```bash
