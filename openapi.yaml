@@ -389,6 +389,65 @@ paths:
                     models: []
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/ai/credentials:
+    get:
+      tags: [AI Settings]
+      operationId: getAiCredentials
+      summary: List the authenticated account's API key configuration statuses
+      description: Returns only provider names and configured flags, never API keys or ciphertext.
+      responses:
+        '200':
+          description: Configuration status for each supported API provider
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiCredentialStatuses' }
+              example:
+                credentials:
+                  - { provider: openai, configured: false }
+                  - { provider: anthropic, configured: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/ai/credentials/{provider}:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/AiCredentialProvider' }
+    put:
+      tags: [AI Settings]
+      operationId: putAiCredential
+      summary: Save or replace an API key for this account and provider
+      description: The key is accepted only in the authenticated request body and never returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiCredentialWrite' }
+      responses:
+        '200':
+          description: Configuration status, without the key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiCredentialStatus' }
+              example: { provider: openai, configured: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [AI Settings]
+      operationId: deleteAiCredential
+      summary: Remove this account's API key for the provider
+      responses:
+        '200':
+          description: Configuration status, without the key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiCredentialStatus' }
+              example: { provider: openai, configured: false }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/ai/settings:
     get:
       tags: [AI Settings]
@@ -559,6 +618,35 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    AiCredentialProvider:
+      type: string
+      enum: [openai, anthropic]
+    AiCredentialWrite:
+      type: object
+      additionalProperties: false
+      required: [api_key]
+      properties:
+        api_key:
+          type: string
+          minLength: 8
+          maxLength: 512
+          writeOnly: true
+          description: Provider API key; never returned in any response.
+    AiCredentialStatus:
+      type: object
+      additionalProperties: false
+      required: [provider, configured]
+      properties:
+        provider: { $ref: '#/components/schemas/AiCredentialProvider' }
+        configured: { type: boolean }
+    AiCredentialStatuses:
+      type: object
+      additionalProperties: false
+      required: [credentials]
+      properties:
+        credentials:
+          type: array
+          items: { $ref: '#/components/schemas/AiCredentialStatus' }
     AiProviderPath:
       type: string
       enum: [local_demo, backend_cli, api]

@@ -30,6 +30,9 @@ OPERATIONS = {
     ("get", "/api/v1/dashboard/summary"): ("200", "DashboardSummary", None),
     ("get", "/api/v1/alerts"): ("200", "AlertPage", None),
     ("get", "/api/v1/ai/providers"): ("200", "AiProviderCatalog", None),
+    ("get", "/api/v1/ai/credentials"): ("200", "AiCredentialStatuses", None),
+    ("put", "/api/v1/ai/credentials/{provider}"): ("200", "AiCredentialStatus", "AiCredentialWrite"),
+    ("delete", "/api/v1/ai/credentials/{provider}"): ("200", "AiCredentialStatus", None),
     ("get", "/api/v1/ai/settings"): ("200", "AiSettings", None),
     ("put", "/api/v1/ai/settings"): ("200", "AiSettings", "AiSettingsInput"),
 }

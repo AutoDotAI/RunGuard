@@ -40,6 +40,17 @@ def _write_private(path: Path, value: str, uid: int) -> None:
         raise
 
 
+def _ensure_model_directory(directory: Path, app_uid: int) -> None:
+    model = directory / "model"
+    if model.is_symlink():
+        raise ValueError("Invalid local model credential directory")
+    if not model.exists():
+        model.mkdir(mode=0o700)
+        os.chown(model, app_uid, app_uid)
+    if not model.is_dir() or stat.S_IMODE(model.stat().st_mode) != 0o700 or model.stat().st_uid != app_uid:
+        raise ValueError("Invalid local model credential directory")
+
+
 def ensure_local_secrets(directory: Path, pgdata: Path, *, auth_secret: str = "",
                          postgres_password: str = "", user: str = "runguard",
                          database: str = "runguard", app_uid: int = 10001,
@@ -63,6 +74,7 @@ def ensure_local_secrets(directory: Path, pgdata: Path, *, auth_secret: str = ""
         expected_url = _database_url(user, database, saved_password)
         if saved_url != expected_url:
             raise ValueError("Configured PostgreSQL user/database differs from saved local credential")
+        _ensure_model_directory(directory, app_uid)
         return
     if (pgdata / "PG_VERSION").exists() and (not auth_secret or not postgres_password):
         raise ValueError("Existing PostgreSQL data requires the original .env credentials")
@@ -73,6 +85,7 @@ def ensure_local_secrets(directory: Path, pgdata: Path, *, auth_secret: str = ""
     _write_private(paths["postgres_password"], postgres_password, postgres_uid)
     _write_private(paths["auth_secret"], auth_secret, app_uid)
     _write_private(paths["database_url"], _database_url(user, database, postgres_password), app_uid)
+    _ensure_model_directory(directory, app_uid)
 
 
 def _database_url(user: str, database: str, password: str) -> str:
