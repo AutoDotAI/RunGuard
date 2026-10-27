@@ -14,4 +14,11 @@ describe("App routing", () => {
 
     expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
   });
+
+  it("places /settings/ai under the protected app route", () => {
+    const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
+    const matches = router.matchRoutes("/settings/ai");
+    expect(matches.map((match) => match.routeId)).toContain("/_app");
+    expect(matches.at(-1)?.routeId).toBe("/_app/settings/ai");
+  });
 });
