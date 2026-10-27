@@ -57,11 +57,16 @@
 
 > **First-run local usability amendment — 2026-10-27:** A fresh local clone
 > must start with `docker compose up --build` without asking the owner to
-> export secrets, database URLs, demo flags, or model credentials. The normal
+> install host Python, Node, or `uv`, or export secrets, database URLs, demo
+> flags, or model credentials. Docker Engine with Compose is the only runtime
+> prerequisite. The normal
 > site must offer a truthful, no-key way to sign up and try both worker types.
 > This supersedes manual `.env` setup as a prerequisite for a fresh local Compose
 > start; existing ignored configuration and imported PostgreSQL data must be
 > preserved. Containers cannot infer host CLI subscription credentials.
+> The normal website and both playable worker types must not require cloning
+> the optional incident-response repository; its responder profile remains
+> separate from the default Compose start.
 
 > **Responder repository amendment — 2026-10-27:** The owner requested that
 > the bounded incident responder live in a separate public
@@ -132,10 +137,11 @@
 
 ### Current acceptance target for a fresh local start
 
-- From a clean checkout with Docker Compose and the documented free local
+- From a clean checkout with only Docker Compose and the documented free local
   ports, `docker compose up --build` starts healthy PostgreSQL, migrations,
   API, one worker, and web without a pre-created `.env` or manually exported
-  variables. Generate unique authentication and database secrets in private,
+  variables or host Python/Node/`uv` install. Generate unique authentication
+  and database secrets in private,
   ignored local state and keep them stable across restart/recreate; never
   commit, log, or return them to the browser. An existing `.env` and existing
   PostgreSQL volume take precedence, so upgrading this project cannot replace
@@ -158,7 +164,8 @@
 
 - The normal Compose worker offers a local deterministic extractive summary
   of bounded readable HTML with no CLI login, API key, model download, or
-  paid request. The provider catalog and AI settings page clearly identify
+  paid request, host runtime, or optional incident-response repository clone.
+  The provider catalog and AI settings page clearly identify
   it as **local demo — no AI model**; stored run results and logs also label
   it so a reviewer cannot mistake it for a Codex, Claude, or LiteLLM result.
   A new local account may select this available path by default so a fresh
@@ -254,7 +261,7 @@ RunGuard is an execution and observability platform for its **own built-in jobs*
 
 ### 1.4 Success definition
 
-A reviewer can sign up, create one of each worker type, run both, watch status changes, inspect their logs and outputs, intentionally observe a failed job, retry it, and confirm that data survives an application restart. The entire application starts locally with one Docker Compose command **after required environment variables are configured**.
+A reviewer can sign up, create one of each worker type, run both, watch status changes, inspect their logs and outputs, intentionally observe a failed job, retry it, and confirm that data survives an application restart. From a fresh clone, the entire application starts locally with `docker compose up --build` and only Docker Engine with Compose installed; no preconfigured environment variables or host Python/Node/`uv` are required.
 
 ---
 
@@ -881,7 +888,7 @@ These controls are especially important because users can enter arbitrary URLs a
 
 ### 10.3 Secrets and sensitive content
 
-- LLM provider keys and the JWT signing secret remain in `.env`/secret manager, excluded from Git.
+- Optional LLM provider keys remain in ignored server configuration; the JWT signing secret stays in the private generated local secret state or an existing ignored `.env`, excluded from Git and browser responses.
 - Sanitize errors, redact URL query strings and authorization headers in telemetry, and exclude webpage bodies from logs.
 - Avoid putting PII/page content into tracing spans.
 - Encode summary text safely on the frontend (no unsanitized HTML rendering).
@@ -1017,7 +1024,7 @@ Use this as the initial brief in Lovable (then provide this complete spec):
 ### 12.4 Verification commands (to be implemented)
 
 ```bash
-# From repository root, after configuring .env
+# From repository root with Docker Compose; a fresh clone needs no .env
 
 docker compose up --build -d
 # Live web + API + worker using same SQLite volume
@@ -1246,7 +1253,7 @@ This section maps planned evidence to the **current official 2026 final-project 
 - [ ] Screenshots: login, dashboard, saved workers, successful monitor, successful summary, failed run/logs, retry.
 - [ ] API docs/OpenAPI contract committed and accurate.
 - [ ] Unit + integration tests pass via documented command.
-- [ ] Docker Compose works on a clean clone with documented local auth setup and external model-provider setup.
+- [ ] `docker compose up --build` works on a clean clone with only Docker Engine and Compose; signup, Website Monitor, and the clearly labeled no-AI Summarizer demo work without manual secrets, an external repository clone, or a real model provider.
 - [ ] SQLite persists across container restarts on local persistent volume.
 - [ ] Deployed application or verifiable deployment demo accessible to reviewers.
 - [ ] CI workflow status visible; deploy and rollback path documented.
