@@ -11,7 +11,7 @@ from app.db import (AlertRecord, IncidentRecord, ResponderActionRecord,
                     RunLogRecord, RunRecord, UserRepository)
 from app.demo_worker import DemoControl, DemoDenied, DemoWorkerRunner
 from app.models import WorkerCreate
-from app.responder import Responder
+from app.responder_adapter import RunGuardResponder as Responder
 from app.run_logs import new_run_log
 from app.store import PersistentStore
 

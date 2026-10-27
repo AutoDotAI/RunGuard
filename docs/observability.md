@@ -95,7 +95,10 @@ control. The bounded responder below uses this same gate.
 
 ### Bounded local responder
 
-The responder is a separate backend command. It scans only persisted open
+The responder policy and CLI live in the separate public
+`AutoDotAI/incident-response` package pinned to a tested commit in the
+optional responder image. RunGuard supplies its PostgreSQL/demo-control
+adapter. The command scans only persisted open
 alerts and creates one PostgreSQL incident per alert. Its four fixed inspections
 read worker heartbeat, the owned failed run, recent safe error codes plus the
 affected run's fixed lifecycle log IDs, and the owned queue depth. They never
@@ -111,7 +114,8 @@ the run and alert for recovery. Outside the demo it records
 timeout records `needs_review`, never a false recovery. Incident and action
 records survive restart and prevent duplicate remediation.
 
-Use a fresh isolated Compose project with `.env` configured. From the repo
+Use a fresh isolated Compose project. Local database and authentication
+credentials are generated automatically when `.env` is absent. From the repo
 root, run:
 
 ```bash
@@ -123,7 +127,8 @@ docker compose -p "$RUNGUARD_DEMO_PROJECT" -f compose.yaml -f compose.observabil
 ```
 
 The smoke creates its own account and fixture, waits for the real stalled
-alert and local firing notification, launches `app.responder once`, verifies
+alert and local firing notification, launches the external
+`incident-response --adapter app.responder_adapter:make_adapter once` CLI, verifies
 the incident evidence and one audited resume, and checks terminal success plus
 the resolved alert and operator notification. Cleanup releases its own demo
 control state. `down` retains the isolated PostgreSQL volume; delete it only after

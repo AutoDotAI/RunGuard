@@ -44,7 +44,8 @@ def run():
         eventually("firing operator notification", lambda: "<td>worker_queue_stalled</td>" in request(INBOX)[1]
                    and "<td>firing</td>" in request(INBOX)[1], timeout=60)
         command = [*COMPOSE, "--profile", "responder",
-                   "run", "--rm", "--no-deps", "responder", "python", "-m", "app.responder", "once"]
+                   "run", "--rm", "--no-deps", "responder", "incident-response",
+                   "--adapter", "app.responder_adapter:make_adapter", "once"]
         process = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=75)
         assert process.returncode == 0, "Responder command failed"
         # The responder may emit structured operational events before its

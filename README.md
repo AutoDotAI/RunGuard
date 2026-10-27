@@ -119,8 +119,11 @@ are available through Grafana Explore. `make observability-down` stops the
 telemetry services without deleting their data. The isolated alert and
 responder drills require `DEMO_MODE=true` and a unique
 `DEMO_PROJECT=rg-demo-<name>`; see [observability](docs/observability.md).
-The responder's automatic action is limited to resuming its isolated demo
-worker; it never retries a user's failed run.
+The optional responder image installs the policy and CLI from the pinned
+[AutoDotAI/incident-response](https://github.com/AutoDotAI/incident-response)
+package. Its automatic action is limited to resuming its isolated demo worker;
+it never retries a user's failed run. Normal `docker compose up --build`
+does not build or install that optional package.
 
 For optional read-only host Codex/Claude analysis of an owned open incident,
 see [incident investigation](docs/incident-ai.md). No CLI login or API key is

@@ -80,9 +80,17 @@ services:
         condition: service_started
 
   responder:
-    image: runguard-api:local
+    image: runguard-responder:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.responder
     profiles: [responder]
-    command: ["python", "-m", "app.responder", "once"]
+    command: ["incident-response", "--adapter", "app.responder_adapter:make_adapter", "once"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - default
       - database

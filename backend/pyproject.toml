@@ -15,7 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["httpx>=0.27,<1", "pytest>=8,<10", "PyYAML>=6,<7", "openapi-spec-validator>=0.7,<1"]
+responder = ["autodotai-incident-response @ git+https://github.com/AutoDotAI/incident-response.git@c26e2ce838cf4d22aaff6c42046d2f43e08d7650"]
+test = ["httpx>=0.27,<1", "pytest>=8,<10", "PyYAML>=6,<7", "openapi-spec-validator>=0.7,<1",
+        "autodotai-incident-response @ git+https://github.com/AutoDotAI/incident-response.git@c26e2ce838cf4d22aaff6c42046d2f43e08d7650"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
