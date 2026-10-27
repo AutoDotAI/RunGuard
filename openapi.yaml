@@ -350,8 +350,10 @@ paths:
       operationId: listAiProviders
       summary: List backend-approved summary providers and models
       description: >-
-        Requires a bearer token. Availability reflects the currently active host
-        worker and server-side API credentials; the browser must not infer it
+        Requires a bearer token. Availability reflects the currently active
+        worker, the authenticated account's API credentials, or an explicitly
+        configured additional server model and credential. The two built-in
+        self-service model IDs always require the account's own key. The browser must not infer it
         from a static model list. Unavailable entries remain visible but cannot
         be saved as a runnable choice. The local extractive demo is explicitly
         labeled as using no AI model. No credential values are returned.
@@ -383,11 +385,18 @@ paths:
                     models: [{ id: default, label: CLI default model }]
                   - provider_path: api
                     provider: litellm
-                    label: LiteLLM API
+                    label: API key — OpenAI / Anthropic
                     available: false
-                    unavailable_reason: No server-side model credential is configured.
-                    models: []
+                    unavailable_reason: Add an OpenAI or Anthropic API key.
+                    models:
+                      - { id: openai/gpt-4.1-mini, label: gpt-4.1-mini }
+                      - { id: anthropic/claude-sonnet-4-6, label: claude-sonnet-4-6 }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '503':
+          description: Account credential cannot be opened with the local encryption key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/ai/credentials:
     get:
@@ -407,6 +416,11 @@ paths:
                   - { provider: anthropic, configured: true }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '503':
+          description: Credential encryption key is unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/ai/credentials/{provider}:
     parameters:
@@ -433,6 +447,11 @@ paths:
               example: { provider: openai, configured: true }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '503':
+          description: Credential encryption key is unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500': { $ref: '#/components/responses/InternalError' }
     delete:
       tags: [AI Settings]
@@ -447,6 +466,11 @@ paths:
               example: { provider: openai, configured: false }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '503':
+          description: Credential encryption key is unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/ai/settings:
     get:
@@ -471,6 +495,11 @@ paths:
                 model: extractive-v1
                 available: true
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '503':
+          description: Account credential cannot be opened with the local encryption key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500': { $ref: '#/components/responses/InternalError' }
     put:
       tags: [AI Settings]
@@ -510,6 +539,11 @@ paths:
               example:
                 error: { code: VALIDATION_ERROR, message: Unsupported provider or model. }
                 request_id: 00000000-0000-4000-8000-000000000001
+        '503':
+          description: Account credential cannot be opened with the local encryption key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500': { $ref: '#/components/responses/InternalError' }
 components:
   headers:

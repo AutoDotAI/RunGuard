@@ -77,16 +77,20 @@ def test_postgres_settings_survive_restart_with_owner_isolation(postgres_url, mo
             assert connection.scalar(text("SELECT count(*) FROM ai_settings")) == 1
 
 
-def test_selected_model_survives_edit_and_runs_through_postgres_queue(postgres_url, monkeypatch):
+def test_selected_model_survives_edit_and_runs_through_postgres_queue(postgres_url, monkeypatch,
+                                                                       tmp_path):
     import json
 
     from app import outbound
+    from app.ai_credentials import ensure_model_key
     from app.db import RunRecord
     from app.workers.runner import HandlerOutcome, WorkerRunner
     from app.workers.url_summarizer import summarize
 
     monkeypatch.setenv("RUNGUARD_ALERT_INTERVAL_SECONDS", "0")
-    monkeypatch.setenv("RUNGUARD_LITELLM_MODELS", "openai/gpt-4o-mini")
+    model_dir = tmp_path / "model"
+    model_dir.mkdir(mode=0o700)
+    monkeypatch.setenv("RUNGUARD_MODEL_ENCRYPTION_KEY_FILE", str(model_dir / "model_encryption_key"))
     monkeypatch.setenv("OPENAI_API_KEY", "test-only-never-sent")
     monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "disabled")
     app = create_app(secret=SECRET, database_url=postgres_url)
@@ -96,12 +100,16 @@ def test_selected_model_survives_edit_and_runs_through_postgres_queue(postgres_u
                         "# Article\n- Fact one.\n- Fact two.\n- Fact three.")
     body = b"<html><body><article>" + b"A readable article with facts and context. " * 5 + b"</article></body></html>"
     with TestClient(app) as client:
+        ensure_model_key(app.state.users, model_dir)
         app.state.ai_settings.capability_reader = lambda: {"litellm", "codex"}
         registered = client.post("/api/v1/auth/register", json={"email": "selected@example.com",
                                                                   "password": "password123"})
         assert registered.status_code == 201
         headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
-        choice = {"provider_path": "api", "provider": "litellm", "model": "openai/gpt-4o-mini"}
+        saved_key = client.put("/api/v1/ai/credentials/openai",
+                               json={"api_key": "sk-test-only-never-sent"}, headers=headers)
+        assert saved_key.status_code == 200
+        choice = {"provider_path": "api", "provider": "litellm", "model": "openai/gpt-4.1-mini"}
         assert client.put("/api/v1/ai/settings", json=choice, headers=headers).status_code == 200
         created = client.post("/api/v1/workers", json={"name": "Article", "kind": "url_summarizer",
                                                         "url": "https://example.com/article"}, headers=headers)

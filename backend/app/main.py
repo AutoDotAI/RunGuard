@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .auth import TokenService
+from .ai_credentials import CredentialRepository
 from .ai_settings import AiSettingsService
 from .db import UserRepository
 from .models import Health
@@ -54,9 +55,10 @@ def create_app(store: PersistentStore | None = None, secret: str | None = None,
 
     app = FastAPI(title="RunGuard API", version="1.0.0", lifespan=lifespan)
     app.state.users = users
+    app.state.ai_credentials = CredentialRepository(users)
     app.state.store = store if store is not None else PersistentStore(users)
     app.state.alerts = AlertService(users)
-    app.state.ai_settings = AiSettingsService(users)
+    app.state.ai_settings = AiSettingsService(users, credentials=app.state.ai_credentials)
     app.state.store.ai_settings = app.state.ai_settings
     app.state.rate_limiter = RateLimiter()
     # Keep module import side-effect free; uvicorn validates the configured secret at startup.
