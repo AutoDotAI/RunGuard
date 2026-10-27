@@ -17,7 +17,6 @@ from sqlalchemy import select, text
 from app.db import RunRecord, UserRepository
 from app.models import MonitorResult, SummarizerResult
 from app.outbound import allowed_public_hosts
-from app.provider_config import configured_litellm_models, has_model_credential
 from app.run_logs import new_run_log, safe_event
 from app.store import now
 from app import observability
@@ -55,7 +54,9 @@ def _worker_capabilities() -> dict[str, list[str]]:
     output is discarded. No secret, account name, or filesystem path enters
     the database heartbeat.
     """
-    providers = ["extractive"]
+    # The adapter is installed in the normal Compose worker. Whether a user
+    # may run a model is checked separately against their own stored key.
+    providers = ["extractive", "litellm"]
     if os.environ.get("RUNGUARD_MODEL_PROVIDER", "codex").strip().lower() == "disabled":
         return {"providers": providers}
     for name, status_command in (
@@ -73,9 +74,6 @@ def _worker_capabilities() -> dict[str, list[str]]:
             continue
         if result.returncode == 0:
             providers.append(name)
-    if any(has_model_credential(model, os.environ)
-           for model in configured_litellm_models(os.environ)):
-        providers.append("litellm")
     return {"providers": providers}
 
 
@@ -94,7 +92,8 @@ class WorkerRunner:
             self.lock_path = Path(str(Path(path).resolve()) + ".worker.lock")
         self.handlers = {"website_monitor": monitor,
                          "url_summarizer": lambda snapshot: summarize(
-                             snapshot, log=lambda event, message, level:
+                             snapshot, credential_lookup=self._credential_for,
+                             log=lambda event, message, level:
                              self._monitor_step(snapshot.id, event, message, level)),
                          **(handlers or {})}
         self._lock_file = None
@@ -104,6 +103,13 @@ class WorkerRunner:
         self._capability_reporter = capability_reporter or _worker_capabilities
         self._heartbeat_stop = Event()
         self._heartbeat_thread = None
+
+    def _credential_for(self, owner_user_id: str, provider: str) -> str | None:
+        # Resolve after claim and immediately before model invocation. The key
+        # never enters RunSnapshot.config_json or any logging function.
+        from app.ai_credentials import CredentialRepository
+
+        return CredentialRepository(self.db).get(owner_user_id, provider)
 
     def __enter__(self) -> "WorkerRunner":
         if self._postgres:
@@ -260,7 +266,7 @@ class WorkerRunner:
                 self._log(session, run, timestamp, "INFO", "RUN_CLAIMED", "Run claimed by worker")
                 self._log(session, run, timestamp, "INFO", "RUN_STARTED", "Run started")
                 snapshot = RunSnapshot(run.id, run.kind, run.url_snapshot, run.config_snapshot_json,
-                                       run.traceparent)
+                                       run.traceparent, run.owner_user_id)
                 session.commit()
                 queued = datetime.fromisoformat(run.created_at.replace("Z", "+00:00"))
                 started = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))

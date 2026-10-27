@@ -4,20 +4,21 @@ from typing import Protocol
 
 
 class LLMClient(Protocol):
-    def complete(self, *, model: str, system: str, user: str) -> str: ...
+    def complete(self, *, model: str, system: str, user: str,
+                 api_key: str | None = None) -> str: ...
 
 
 class LiteLLMClient:
-    def complete(self, *, model: str, system: str, user: str) -> str:
+    def complete(self, *, model: str, system: str, user: str,
+                 api_key: str | None = None) -> str:
         import litellm
 
-        response = litellm.completion(
-            model=model,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": user}],
-            max_tokens=500,
-            timeout=50,
-            num_retries=0,
-            stream=False,
-        )
+        request = {"model": model,
+                   "messages": [{"role": "system", "content": system},
+                                {"role": "user", "content": user}],
+                   "max_tokens": 500, "timeout": 50,
+                   "num_retries": 0, "stream": False}
+        if api_key is not None:
+            request["api_key"] = api_key
+        response = litellm.completion(**request)
         return response.choices[0].message.content
