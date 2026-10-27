@@ -10,7 +10,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .db import AiSettingsRecord, UserRepository
 from .models import AiModel, AiProvider, AiProviderCatalog, AiSettings, AiSettingsInput
-from .provider_config import MODEL_ID, configured_litellm_models, has_model_credential
+from .provider_config import (DEMO_LABEL, DEMO_MODEL, MODEL_ID,
+                              configured_litellm_models, has_model_credential)
 from .store import Problem
 
 
@@ -55,7 +56,7 @@ class AiSettingsService:
                 return set()
             capabilities = json.loads(row.capabilities_json)
             providers = capabilities.get("providers") if isinstance(capabilities, dict) else None
-            return {item for item in providers if item in {"codex", "claude", "litellm"}} if isinstance(providers, list) else set()
+            return {item for item in providers if item in {"extractive", "codex", "claude", "litellm"}} if isinstance(providers, list) else set()
         except (SQLAlchemyError, ValueError, TypeError, AttributeError):
             return set()
 
@@ -72,7 +73,11 @@ class AiSettingsService:
         # a model that this server cannot authenticate while another works.
         api_models = credentialed_api_models or configured_api_models
         api_has_key = bool(credentialed_api_models)
-        providers = []
+        providers = [AiProvider(provider_path="local_demo", provider="extractive",
+                                label=DEMO_LABEL, available="extractive" in connected,
+                                unavailable_reason=(None if "extractive" in connected else
+                                                    "Local demo worker is not connected."),
+                                models=[AiModel(id=DEMO_MODEL, label="Extractive page excerpt")])]
         for provider, label, models in (("codex", "Codex CLI", codex),
                                         ("claude", "Claude CLI", claude)):
             available = provider in connected
@@ -95,7 +100,7 @@ class AiSettingsService:
             row = session.get(AiSettingsRecord, owner)
             selection = (AiSettingsInput(provider_path=row.provider_path, provider=row.provider,
                                          model=row.model) if row else
-                         AiSettingsInput(provider_path="backend_cli", provider="codex", model="default"))
+                         AiSettingsInput(provider_path="local_demo", provider="extractive", model=DEMO_MODEL))
         entry = next((entry for entry in self.catalog().providers
                       if entry.provider_path == selection.provider_path and entry.provider == selection.provider), None)
         available = bool(entry and entry.available and any(model.id == selection.model for model in entry.models))

@@ -348,12 +348,13 @@ paths:
     get:
       tags: [AI Settings]
       operationId: listAiProviders
-      summary: List backend-approved AI providers and models
+      summary: List backend-approved summary providers and models
       description: >-
         Requires a bearer token. Availability reflects the currently active host
         worker and server-side API credentials; the browser must not infer it
         from a static model list. Unavailable entries remain visible but cannot
-        be saved as a runnable choice. No credential values are returned.
+        be saved as a runnable choice. The local extractive demo is explicitly
+        labeled as using no AI model. No credential values are returned.
       responses:
         '200':
           description: Backend-owned catalog and current availability
@@ -362,6 +363,12 @@ paths:
               schema: { $ref: '#/components/schemas/AiProviderCatalog' }
               example:
                 providers:
+                  - provider_path: local_demo
+                    provider: extractive
+                    label: local demo — no AI model
+                    available: true
+                    unavailable_reason: null
+                    models: [{ id: extractive-v1, label: Extractive page excerpt }]
                   - provider_path: backend_cli
                     provider: codex
                     label: Codex CLI
@@ -390,8 +397,9 @@ paths:
       description: >-
         A saved selection can become unavailable when a host worker disconnects
         or server-side credentials change. Availability is recomputed on read.
-        An account without a saved selection defaults to Codex CLI and its
-        backend-approved default model.
+        An account without a saved selection defaults to the local extractive
+        demo, which is not an AI model. Saved real-provider selections are
+        never changed to the demo automatically.
       responses:
         '200':
           description: Current selection and availability
@@ -399,10 +407,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AiSettings' }
               example:
-                provider_path: backend_cli
-                provider: codex
-                model: default
-                available: false
+                provider_path: local_demo
+                provider: extractive
+                model: extractive-v1
+                available: true
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
     put:
@@ -418,14 +426,14 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/AiSettingsInput' }
-            example: { provider_path: backend_cli, provider: codex, model: default }
+            example: { provider_path: local_demo, provider: extractive, model: extractive-v1 }
       responses:
         '200':
           description: Saved selection and current availability
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AiSettings' }
-              example: { provider_path: backend_cli, provider: codex, model: default, available: true }
+              example: { provider_path: local_demo, provider: extractive, model: extractive-v1, available: true }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409':
           description: Selected provider is currently unavailable (PROVIDER_UNAVAILABLE)
@@ -553,10 +561,10 @@ components:
   schemas:
     AiProviderPath:
       type: string
-      enum: [backend_cli, api]
+      enum: [local_demo, backend_cli, api]
     AiProviderId:
       type: string
-      enum: [codex, claude, litellm]
+      enum: [extractive, codex, claude, litellm]
     AiModel:
       type: object
       additionalProperties: false
@@ -725,7 +733,11 @@ components:
         page_title:
           type: [string, 'null']
         summary: { type: string }
-        model: { type: string }
+        model:
+          type: string
+          description: >-
+            Real model identifier for a model response, or the explicit
+            "local demo — no AI model" label for an extractive demo result.
         input_was_truncated: { type: boolean }
     RunError:
       type: object

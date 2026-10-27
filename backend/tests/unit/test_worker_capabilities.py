@@ -6,11 +6,11 @@ from types import SimpleNamespace
 from app.workers import runner
 
 
-def test_disabled_worker_publishes_no_provider_and_probes_no_cli(monkeypatch):
+def test_disabled_model_worker_publishes_only_extracts_and_probes_no_cli(monkeypatch):
     monkeypatch.setenv("RUNGUARD_MODEL_PROVIDER", "disabled")
     monkeypatch.setattr(runner.shutil, "which", lambda _name: (_ for _ in ()).throw(
         AssertionError("disabled worker must not probe CLIs")))
-    assert runner._worker_capabilities() == {"providers": []}
+    assert runner._worker_capabilities() == {"providers": ["extractive"]}
 
 
 def test_capabilities_need_usable_cli_or_server_key_and_publish_no_secrets(monkeypatch):
@@ -28,7 +28,7 @@ def test_capabilities_need_usable_cli_or_server_key_and_publish_no_secrets(monke
 
     monkeypatch.setattr(runner.subprocess, "run", status)
     result = runner._worker_capabilities()
-    assert result == {"providers": ["codex", "litellm"]}
+    assert result == {"providers": ["extractive", "codex", "litellm"]}
     assert len(seen) == 2
     assert all("OPENAI_API_KEY" not in kwargs["env"] for _, kwargs in seen)
     assert "private-test-key" not in repr(result)

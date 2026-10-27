@@ -91,13 +91,14 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
   return (
     <form onSubmit={submit} className="max-w-2xl space-y-6">
       <p className="text-sm text-muted-foreground">
-        Choose the model path for future URL Summarizer runs. Codex and Claude use a worker on this
-        machine; LiteLLM uses a server configured API key. Credentials stay on the server or host.
+        Choose how future URL summaries are created. The local demo copies a short page excerpt and
+        uses no AI model. Codex and Claude use a host worker; LiteLLM uses a server configured API key.
+        Credentials stay on the server or host.
       </p>
       {providers.length === 0 && (
         <p role="status" className="rounded-md border p-4 text-sm">
-          No model provider is configured or available. Start a host worker or configure a
-          server-side API provider to use summaries.
+          No summary provider is available. Start the local worker, a host worker, or configure a
+          server-side API provider.
         </p>
       )}
       <fieldset className="space-y-3">
@@ -131,9 +132,11 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
                 {provider.label}
               </span>
               <span className="mt-1 block pl-6 text-xs text-muted-foreground">
-                {provider.provider_path === "backend_cli"
-                  ? "Backend worker · host CLI login"
-                  : "API · server-side LiteLLM key"}
+                {provider.provider_path === "local_demo"
+                  ? "Deterministic page excerpt · no AI model or API key"
+                  : provider.provider_path === "backend_cli"
+                    ? "Backend worker · host CLI login"
+                    : "API · server-side LiteLLM key"}
               </span>
               {!provider.available && (
                 <span className="mt-1 block pl-6 text-xs text-destructive">
@@ -151,7 +154,7 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
       )}
       {selected && selected.available && (
         <div className="space-y-1.5">
-          <Label htmlFor="ai-model">Model</Label>
+          <Label htmlFor="ai-model">{selected.provider_path === "local_demo" ? "Method" : "Model"}</Label>
           <select
             id="ai-model"
             value={choice?.model ?? ""}

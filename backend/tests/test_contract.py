@@ -217,8 +217,8 @@ def test_ai_settings_contract_is_authenticated_bounded_and_secret_free():
     document = contract()
     catalog = document["components"]["schemas"]["AiProvider"]
     assert set(catalog["required"]) == type_script_required("AiProvider")
-    assert document["components"]["schemas"]["AiProviderPath"]["enum"] == ["backend_cli", "api"]
-    assert document["components"]["schemas"]["AiProviderId"]["enum"] == ["codex", "claude", "litellm"]
+    assert document["components"]["schemas"]["AiProviderPath"]["enum"] == ["local_demo", "backend_cli", "api"]
+    assert document["components"]["schemas"]["AiProviderId"]["enum"] == ["extractive", "codex", "claude", "litellm"]
     for key in PLANNED:
         operation = operations(document)[key]
         assert operation.get("security", document["security"]) == [{"localBearer": []}]
@@ -228,7 +228,7 @@ def test_ai_settings_contract_is_authenticated_bounded_and_secret_free():
     update = operations(document)[("put", "/api/v1/ai/settings")]
     assert {"200", "401", "409", "422", "500"} == set(update["responses"])
     assert update["requestBody"]["content"]["application/json"]["example"] == {
-        "provider_path": "backend_cli", "provider": "codex", "model": "default"
+        "provider_path": "local_demo", "provider": "extractive", "model": "extractive-v1"
     }
     input_schema = document["components"]["schemas"]["AiSettingsInput"]
     assert input_schema["additionalProperties"] is False

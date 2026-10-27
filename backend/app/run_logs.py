@@ -22,6 +22,8 @@ MESSAGES = {
     "TEXT_EXTRACTION_STARTED": "Extracting readable page text",
     "TEXT_EXTRACTION_FAILED": "Readable page text could not be extracted",
     "TEXT_EXTRACTED": "Readable page text extracted",
+    "DEMO_EXTRACTIVE_STARTED": "Local demo — no AI model: selecting page sentences",
+    "DEMO_EXTRACTIVE_COMPLETED": "Local demo — no AI model: extractive summary created",
     "INPUT_TRUNCATED": "Readable page text truncated to input limit",
     "LLM_REQUEST_STARTED": "Requesting summary",
     "LLM_REQUEST_FAILED": "Summarization provider failed",

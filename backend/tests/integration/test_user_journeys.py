@@ -177,6 +177,9 @@ def test_monitor_api_restart_failure_retry_snapshot_and_archive(client, database
 
 def test_summarizer_api_worker_result_and_provider_failure(client, database_url):
     alice = register(client, "summary@example.com")
+    selected = client.put(f"{API}/ai/settings", headers=alice, json={
+        "provider_path": "backend_cli", "provider": "codex", "model": "default"})
+    assert selected.status_code == 200, selected.text
     worker_id = create_worker(client, alice, "url_summarizer", "Article", "https://example.com/article")
     page = outbound.FetchResponse(200, {"Content-Type": "text/html"},
         b"<title>Incident report</title><article><p>" +

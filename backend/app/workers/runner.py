@@ -54,9 +54,9 @@ def _worker_capabilities() -> dict[str, list[str]]:
     output is discarded. No secret, account name, or filesystem path enters
     the database heartbeat.
     """
+    providers = ["extractive"]
     if os.environ.get("RUNGUARD_MODEL_PROVIDER", "codex").strip().lower() == "disabled":
-        return {"providers": []}
-    providers = []
+        return {"providers": providers}
     for name, status_command in (
         ("codex", ["codex", "login", "status"]),
         ("claude", ["claude", "auth", "status"]),

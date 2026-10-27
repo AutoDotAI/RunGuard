@@ -19,7 +19,7 @@ SECRET = "test-only-signing-secret-32-bytes-minimum"
 
 def app_for(path: Path):
     app = create_app(secret=SECRET, database_url=f"sqlite:///{path}")
-    app.state.ai_settings.capability_reader = lambda: {"codex"}
+    app.state.ai_settings.capability_reader = lambda: {"codex", "extractive"}
     return app
 
 
@@ -96,7 +96,7 @@ def test_enqueue_commits_snapshot_log_and_survives_restart_without_executor(tmp_
         with restarted.app.state.users.sessions() as session:
             record = session.get(RunRecord, run_id)
             assert json.loads(record.config_snapshot_json) == {
-                "provider_path": "backend_cli", "provider": "codex", "model": "default",
+                "provider_path": "local_demo", "provider": "extractive", "model": "extractive-v1",
                 "version": 1}
         assert restarted.get(f"/api/v1/runs/{run_id}/logs", headers=auth(token)).json()["items"] == logs
         assert counts(path) == (1, 1)

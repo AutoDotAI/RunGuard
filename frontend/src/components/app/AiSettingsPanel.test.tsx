@@ -67,6 +67,35 @@ function client(overrides: Partial<SettingsClient> = {}): SettingsClient {
 }
 
 describe("AI settings", () => {
+  it("labels the fresh local extractive choice as a no-AI demo", async () => {
+    const demo = {
+      provider_path: "local_demo" as const,
+      provider: "extractive" as const,
+      model: "extractive-v1",
+      available: true,
+    };
+    const api = client({
+      getAiProviders: vi.fn().mockResolvedValue({ providers: [{
+        provider_path: demo.provider_path,
+        provider: demo.provider,
+        label: "local demo — no AI model",
+        available: true,
+        unavailable_reason: null,
+        models: [{ id: demo.model, label: "Extractive page excerpt" }],
+      }] }),
+      getAiSettings: vi.fn().mockResolvedValue(demo),
+    });
+    show(api);
+    expect(await screen.findByRole("radio", { name: /local demo — no AI model/i })).toBeChecked();
+    expect(screen.getByText(/Deterministic page excerpt · no AI model or API key/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Method")).toHaveValue("extractive-v1");
+    expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
+    await waitFor(() => expect(api.updateAiSettings).toHaveBeenCalledWith({
+      provider_path: "local_demo", provider: "extractive", model: "extractive-v1",
+    }));
+  });
+
   it("shows loading while both authenticated requests are pending", () => {
     const pending = new Promise<never>(() => {});
     show(

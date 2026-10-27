@@ -178,7 +178,7 @@ function Result({ r }: { r: Run }) {
         )}
       </div>
       <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t pt-3 font-mono text-xs text-muted-foreground">
-        <span>model: {s.model}</span>
+        <span>{s.model === "local demo — no AI model" ? `source: ${s.model}` : `model: ${s.model}`}</span>
         <a href={s.source_url} target="_blank" rel="noreferrer" className="break-all underline-offset-4 hover:underline">source: {s.source_url}</a>
         {s.input_was_truncated && <span className="text-warning">input truncated</span>}
       </div>
