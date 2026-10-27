@@ -68,6 +68,10 @@ HTTP and model adapters. No command in this repository deploys publicly.
 persistence, and a synthetic old `.env`/database upgrade in disposable Compose
 projects.
 
+The [local script inventory](docs/local-scripts.md) explains each optional
+check and recovery helper; none is required for a recipient's normal site
+startup.
+
 The [CI workflow](.github/workflows/ci.yml) runs the backend suite against a
 temporary PostgreSQL 16 service, then checks the PostgreSQL integration files
 explicitly so they cannot pass by skipping for a missing database URL. To run
