@@ -11,14 +11,14 @@ From a fresh checkout, start the normal site, then use a second terminal:
 
 ```bash
 docker compose up --build -d
-./incident-response/run.sh once
+make incident-responder-once
 ```
 
 The launcher builds the optional responder image before scanning; later builds
 reuse Docker cache. Normal Compose startup does not build that image. To keep checking for new open alerts:
 
 ```bash
-./incident-response/run.sh watch
+make incident-responder
 ```
 
 `watch` runs one scan at a time, every 15 seconds by default. Set
@@ -50,5 +50,5 @@ The responder can perform only the existing, audited `resume_demo_worker`
 action for a bound stalled fixture in an explicit `rg-demo-*` project. Other
 incidents produce a diagnosis and an approval-required or denied decision;
 this command does not edit application code or retry user jobs. For an
-isolated alert-to-recovery drill, see `make responder-smoke` and
-[observability documentation](../docs/observability.md).
+isolated alert-to-recovery drill, see `make responder-smoke` and the
+[README observability section](../README.md#observability).

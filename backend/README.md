@@ -13,7 +13,7 @@ excerpt from readable HTML in the normal Compose worker. Host Codex CLI,
 host Claude CLI, and server-side LiteLLM are optional real-model paths selected
 through AI settings when available. A missing provider is reported separately
 from a failed attempted model request. No provider fallback or automatic job
-retry occurs. See [model provider setup](../docs/model-providers.md).
+retry occurs. See [AI provider setup](../README.md#choose-an-ai-provider).
 
 ## Local source run
 
@@ -65,5 +65,5 @@ verified host firewall and allowlist would be required before deployment.
 Owner-scoped alerts are durable. The optional telemetry profile routes
 aggregate notifications to local Alertmanager and an operator inbox. The
 bounded responder can resume only its own isolated paused demo worker; it
-cannot retry user jobs. See [observability](../docs/observability.md) and
-[incident investigation](../docs/incident-ai.md).
+cannot retry user jobs. See [observability](../README.md#observability) and
+[incident response](../README.md#incident-response).

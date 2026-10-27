@@ -17,7 +17,7 @@ OBS_COMPOSE = $(DOCKER) compose -p "$$OBS_PROJECT" -f compose.yaml -f compose.ob
 STALL_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability
 RESPONDER_COMPOSE = $(DOCKER) compose -p "$$DEMO_PROJECT" -f compose.yaml -f compose.observability.yaml --profile observability --profile responder
 
-.PHONY: help install install-backend install-frontend test test-backend test-postgres test-frontend typecheck build build-frontend build-images check security-check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke postgres-smoke first-run-smoke postgres-import postgres-backup postgres-restore postgres-recovery-smoke observability-up observability-smoke observability-down guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry
+.PHONY: help install install-backend install-frontend test test-backend test-postgres test-frontend typecheck build build-frontend build-images check security-check migrate api worker worker-codex worker-claude worker-litellm frontend compose-config compose-up compose-status compose-logs compose-down compose-smoke postgres-smoke first-run-smoke postgres-import postgres-backup postgres-restore postgres-recovery-smoke observability-up observability-smoke observability-down incident-responder incident-responder-once guard-demo demo-stall-up demo-stall-smoke demo-stall-down responder-up responder-smoke responder-down guard-incident incident-investigate incident-review incident-retry
 
 help: ## List every Makefile target; no install or service start
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-24s %s\n", $$1, $$2}' Makefile
@@ -101,6 +101,11 @@ observability-smoke: ## Run offline telemetry smoke for OBS_PROJECT
 	RUNGUARD_COMPOSE_PROJECT="$$OBS_PROJECT" $(PYTHON) scripts/observability_smoke.py
 observability-down: ## Stop telemetry services; keep the local app and volumes running
 	$(OBS_COMPOSE) stop collector observability alertmanager operator-inbox
+
+incident-responder: ## Watch persisted open alerts; run in a second terminal
+	./incident-response/run.sh watch
+incident-responder-once: ## Scan persisted open alerts once and exit
+	./incident-response/run.sh once
 
 guard-demo: ## Validate DEMO_MODE=true and a dedicated DEMO_PROJECT=rg-demo-<name>
 	@test "$$DEMO_MODE" = true || { echo 'Set DEMO_MODE=true for a local demo only' >&2; exit 2; }
