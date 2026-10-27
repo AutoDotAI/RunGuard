@@ -81,20 +81,6 @@ def sql(query: str) -> str:
 
 
 def main() -> None:
-    env_path = ROOT / ".env"
-    created_env = False
-    if not env_path.exists():
-        try:
-            fd = os.open(env_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError:
-            pass
-        else:
-            with os.fdopen(fd, "w") as file:
-                file.write(
-                    f"RUNGUARD_AUTH_SECRET={ENV['RUNGUARD_AUTH_SECRET']}\n"
-                    f"RUNGUARD_POSTGRES_PASSWORD={ENV['RUNGUARD_POSTGRES_PASSWORD']}\n"
-                )
-            created_env = True
     try:
         compose("config", "--quiet")
         config = json.loads(compose("config", "--format", "json", capture=True))
@@ -102,7 +88,7 @@ def main() -> None:
         assert set(postgres["networks"]) == {"database"}
         assert postgres["ports"][0]["host_ip"] == "127.0.0.1"
         assert config["volumes"]["postgres_data"]
-        compose("up", "-d", "postgres")
+        compose("up", "--build", "-d", "postgres")
         wait_healthy()
         assert_loopback_port()
         compose("ps", "postgres")
@@ -117,11 +103,7 @@ def main() -> None:
         assert sql("SELECT value FROM smoke_marker") == MARKER
         print("PASS: PostgreSQL healthy and test row retained after restart and recreate")
     finally:
-        try:
-            compose("down", "--volumes")
-        finally:
-            if created_env:
-                env_path.unlink()
+        compose("down", "--volumes")
 
 
 if __name__ == "__main__":

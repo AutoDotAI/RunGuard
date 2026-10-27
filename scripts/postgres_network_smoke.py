@@ -57,13 +57,13 @@ def main() -> None:
             config = json.loads(dc("config", "--format", "json", capture=True))
             for name in ("api", "worker", "migrate"):
                 service = config["services"][name]
-                assert service["environment"]["RUNGUARD_DATABASE_URL"].startswith(
-                    "postgresql+psycopg://runguard:")
-                assert "@postgres:5432/runguard" in service["environment"]["RUNGUARD_DATABASE_URL"]
+                assert service["environment"]["RUNGUARD_DATABASE_URL_FILE"] == (
+                    "/run/runguard-secrets/database_url")
                 assert "database" in service["networks"]
-                assert not service.get("volumes"), f"{name} unexpectedly mounts a host path"
+                assert all("runguard_local_secrets" in volume["source"]
+                           for volume in service.get("volumes", []))
             assert config["services"]["postgres"]["ports"][0]["host_ip"] == "127.0.0.1"
-            dc("up", "-d", "postgres")
+            dc("up", "--build", "-d", "postgres")
             deadline = time.monotonic() + 90
             while time.monotonic() < deadline:
                 container = dc("ps", "-q", "postgres", capture=True)

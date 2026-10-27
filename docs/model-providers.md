@@ -11,20 +11,19 @@ silently switch models. There is no automatic provider fallback or job retry.
 
 Install and sign in to Codex CLI or Claude CLI on the machine running the
 worker. Keep CLI login material outside Docker and Git. The local Compose
-PostgreSQL service binds its host port to `127.0.0.1`; set
-`RUNGUARD_DATABASE_URL` to that loopback URL for the host worker. Stop the
-container worker first so only one worker owns the queue:
+PostgreSQL service binds its host port to `127.0.0.1`. After starting the site
+with `docker compose up --build`, run one host worker from another terminal:
 
 ```bash
-docker compose stop worker
-export RUNGUARD_DATABASE_URL='postgresql+psycopg://runguard:<password>@127.0.0.1:5432/runguard'
-cd backend
-uv sync --locked --extra test
-uv run python -m app.workers.runner
+make install-backend
+make worker-codex
+# or: make worker-claude
 ```
 
-Substitute the actual password, user, database, and optional port from the
-ignored root `.env`. Codex is the default. Claude is selectable through the
+The Make target stops the container worker, reads the private Compose database
+credential without printing it, and launches exactly one host worker. It works
+whether a fresh project generated credentials in its named volume or an older
+project uses its existing ignored `.env`. Codex is the default. Claude is selectable through the
 AI settings page when the host worker advertises it. For named models, the
 worker passes only a backend-allowlisted fixed `--model` argument; the
 catalog's `default` value uses the CLI's native model. CLI calls use a

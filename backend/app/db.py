@@ -200,9 +200,20 @@ def default_database_url() -> str:
     return f"sqlite:///{path}"
 
 
+def configured_database_url() -> str:
+    if value := os.environ.get("RUNGUARD_DATABASE_URL"):
+        return value
+    if path := os.environ.get("RUNGUARD_DATABASE_URL_FILE"):
+        value = Path(path).read_text().strip()
+        if not value:
+            raise ValueError("Local PostgreSQL URL file is empty")
+        return value
+    return default_database_url()
+
+
 class UserRepository:
     def __init__(self, database_url: str | None = None):
-        self.database_url = database_url or os.environ.get("RUNGUARD_DATABASE_URL") or default_database_url()
+        self.database_url = database_url or configured_database_url()
         if self.database_url.startswith("sqlite:///"):
             if self.database_url != "sqlite:///:memory:":
                 Path(self.database_url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)

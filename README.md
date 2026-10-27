@@ -11,22 +11,20 @@ The existing Lovable frontend stays in `frontend/`; see
 
 ## Start locally
 
-Requirements: Docker Engine with Compose, Python 3, and free host ports 3000,
-8000, and 5432. Create an ignored `.env` with one stable JWT signing secret
-(at least 32 bytes) and a PostgreSQL password. Reuse the same values after
-restarts; never commit `.env` or put model credentials in the browser.
+Requirements: Docker Engine with Compose and free host ports 3000, 8000, and
+5432. A fresh clone needs no `.env`, Python, Node.js, API key, or exported
+variable for the local website:
 
 ```bash
-umask 077
-python3 -c 'from pathlib import Path; import secrets; Path(".env").open("x").write("RUNGUARD_AUTH_SECRET=" + secrets.token_hex(32) + "\nRUNGUARD_POSTGRES_PASSWORD=" + secrets.token_hex(32) + "\n")'
-docker compose config --quiet
-docker compose up --build -d
-docker compose ps --all
-curl -fsS http://127.0.0.1:8000/health
+docker compose up --build
 ```
 
-If `.env` already exists, keep its signing secret and add only the missing
-PostgreSQL password. Set `RUNGUARD_POSTGRES_PORT` if host port 5432 is taken.
+Compose generates unique PostgreSQL and JWT credentials in a private named
+volume and reuses them after restart or recreation. An existing ignored `.env`
+and populated PostgreSQL volume keep their original credentials and data; a
+missing or mismatched old credential stops startup instead of replacing it.
+Do not remove the normal project's credential or PostgreSQL volumes. Set
+`RUNGUARD_POSTGRES_PORT` only if host port 5432 is occupied.
 The UI is <http://localhost:3000/signup>; the API is <http://localhost:8000>.
 `migrate` must exit successfully before the API and worker start. All published
 ports bind to loopback. `docker compose down` stops services and retains the
@@ -34,7 +32,8 @@ PostgreSQL and preserved SQLite volumes; **never use `down --volumes` for the
 normal project**. Start exactly one job worker against the database.
 
 The older SQLite volume is preserved as the source of a verified one-time
-import. Launching the PostgreSQL stack does not silently import it. Follow
+import. A fresh Compose project creates a new PostgreSQL database; it does
+not silently import a different project's SQLite data. Follow
 [local recovery](docs/local-recovery.md) for the offline backup/import and
 PostgreSQL restore commands before relying on historical accounts and runs.
 The guarded Makefile commands are `make postgres-import` (requires
@@ -48,8 +47,10 @@ The URL Summarizer offers host Codex CLI by default, host Claude CLI, and an
 optional server-side LiteLLM API-key path. The API and browser never receive
 CLI login files; API keys stay in the server environment. A CLI-backed worker
 runs **on the host**, using the same PostgreSQL URL as the API through the
-loopback-bound database port. Stop the container worker before running a host
-worker. See [model provider setup](docs/model-providers.md). A model subscription
+loopback-bound database port. After `docker compose up --build`, use
+`make worker-codex` or `make worker-claude` in another terminal; the target
+stops the container worker and reads the local credential without printing it.
+See [model provider setup](docs/model-providers.md). A model subscription
 is not an API key. No paid model call is required for tests.
 
 ## Commands and checks
@@ -63,6 +64,9 @@ local stack. `make postgres-smoke` uses an isolated disposable project to
 check database restart persistence. `make compose-smoke` exercises a real
 API→worker journey and contacts `example.com`; offline backend tests use fake
 HTTP and model adapters. No command in this repository deploys publicly.
+`make first-run-smoke` checks a copied checkout with no `.env`, restart
+persistence, and a synthetic old `.env`/database upgrade in disposable Compose
+projects.
 
 The [CI workflow](.github/workflows/ci.yml) runs the backend suite against a
 temporary PostgreSQL 16 service, then checks the PostgreSQL integration files

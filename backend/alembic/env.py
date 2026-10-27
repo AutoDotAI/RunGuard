@@ -5,10 +5,10 @@ from pathlib import Path
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.db import Base
+from app.db import Base, configured_database_url
 
 config = context.config
-if database_url := config.attributes.get("database_url") or os.environ.get("RUNGUARD_DATABASE_URL"):
+if database_url := config.attributes.get("database_url") or configured_database_url():
     # ConfigParser interprets percent escapes in URL query strings and
     # encoded passwords unless they are doubled before assignment.
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))

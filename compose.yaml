@@ -7,19 +7,43 @@ x-backend: &backend
   networks:
     - default
     - database
+  volumes:
+    - runguard_local_secrets:/run/runguard-secrets:ro
   environment:
-    RUNGUARD_DATABASE_URL: postgresql+psycopg://${RUNGUARD_POSTGRES_USER:-runguard}:${RUNGUARD_POSTGRES_PASSWORD:?Set a stable PostgreSQL password in .env}@postgres:5432/${RUNGUARD_POSTGRES_DB:-runguard}
-    RUNGUARD_AUTH_SECRET: ${RUNGUARD_AUTH_SECRET:?Set a stable secret of at least 32 bytes in .env}
+    RUNGUARD_DATABASE_URL: ""
+    RUNGUARD_AUTH_SECRET: ""
+    RUNGUARD_DATABASE_URL_FILE: /run/runguard-secrets/database_url
+    RUNGUARD_AUTH_SECRET_FILE: /run/runguard-secrets/auth_secret
 
 services:
+  secrets-init:
+    image: runguard-api:local
+    build:
+      context: ./backend
+    user: "0:0"
+    command: ["python", "-m", "app.local_bootstrap"]
+    environment:
+      RUNGUARD_AUTH_SECRET: ${RUNGUARD_AUTH_SECRET:-}
+      RUNGUARD_POSTGRES_PASSWORD: ${RUNGUARD_POSTGRES_PASSWORD:-}
+      RUNGUARD_POSTGRES_USER: ${RUNGUARD_POSTGRES_USER:-runguard}
+      RUNGUARD_POSTGRES_DB: ${RUNGUARD_POSTGRES_DB:-runguard}
+    volumes:
+      - runguard_local_secrets:/run/runguard-secrets
+      - postgres_data:/pgdata:ro
+    restart: "no"
+
   postgres:
     image: postgres:16
     environment:
       POSTGRES_DB: ${RUNGUARD_POSTGRES_DB:-runguard}
       POSTGRES_USER: ${RUNGUARD_POSTGRES_USER:-runguard}
-      POSTGRES_PASSWORD: ${RUNGUARD_POSTGRES_PASSWORD:?Set a stable PostgreSQL password in .env}
+      POSTGRES_PASSWORD_FILE: /run/runguard-secrets/postgres_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - runguard_local_secrets:/run/runguard-secrets:ro
+    depends_on:
+      secrets-init:
+        condition: service_completed_successfully
     networks:
       - database
     ports:
@@ -46,13 +70,15 @@ services:
   api:
     <<: *backend
     # Server-side model catalog and optional LiteLLM credentials stay out of web.
-    env_file: ${RUNGUARD_MODEL_ENV_FILE:-.env}
+    env_file:
+      - path: ${RUNGUARD_MODEL_ENV_FILE:-.env}
+        required: false
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
     depends_on:
       migrate:
         condition: service_completed_successfully
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${RUNGUARD_API_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
       interval: 5s
@@ -63,10 +89,14 @@ services:
 
   worker:
     <<: *backend
-    env_file: ${RUNGUARD_MODEL_ENV_FILE:-.env}
+    env_file:
+      - path: ${RUNGUARD_MODEL_ENV_FILE:-.env}
+        required: false
     environment:
-      RUNGUARD_DATABASE_URL: postgresql+psycopg://${RUNGUARD_POSTGRES_USER:-runguard}:${RUNGUARD_POSTGRES_PASSWORD:?Set a stable PostgreSQL password in .env}@postgres:5432/${RUNGUARD_POSTGRES_DB:-runguard}
-      RUNGUARD_AUTH_SECRET: ${RUNGUARD_AUTH_SECRET:?Set a stable secret of at least 32 bytes in .env}
+      RUNGUARD_DATABASE_URL: ""
+      RUNGUARD_AUTH_SECRET: ""
+      RUNGUARD_DATABASE_URL_FILE: /run/runguard-secrets/database_url
+      RUNGUARD_AUTH_SECRET_FILE: /run/runguard-secrets/auth_secret
       # Host subscription credentials are never mounted into this container.
       RUNGUARD_MODEL_PROVIDER: ${RUNGUARD_MODEL_PROVIDER:-disabled}
     command: ["python", "-m", "app.workers.runner"]
@@ -89,7 +119,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${RUNGUARD_WEB_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 5s
@@ -103,6 +133,7 @@ volumes:
   # No active service mounts it after the PostgreSQL cutover.
   runguard_data:
   postgres_data:
+  runguard_local_secrets:
 
 networks:
   database:
