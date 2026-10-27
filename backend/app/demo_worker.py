@@ -215,6 +215,14 @@ class DemoWorkerRunner(WorkerRunner):
         self.control.close()
         super().__exit__(*exc)
 
+    def _touch_heartbeat(self) -> None:
+        # A paused demo represents a stalled worker. PostgreSQL's background
+        # heartbeat thread must observe the pause as well as run_once does.
+        state = self.control.state()
+        if state is not None and state["status"] == "paused":
+            return
+        super()._touch_heartbeat()
+
     def claim_oldest(self):
         state = self.control.state()
         if state is None or state["status"] != "resumed" or state["run_id"] is None:

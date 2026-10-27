@@ -151,6 +151,32 @@ def test_pg_demo_control_is_persisted_and_restricted(postgres_url, monkeypatch):
         users.close()
 
 
+def test_pg_paused_demo_worker_stops_background_heartbeat(postgres_url, monkeypatch):
+    monkeypatch.setenv("RUNGUARD_DEMO_MODE", "true")
+    monkeypatch.setenv("RUNGUARD_DEMO_PROJECT", "rg-demo-postgres-heartbeat")
+    monkeypatch.setenv("RUNGUARD_COMPOSE_PROJECT", "rg-demo-postgres-heartbeat")
+    monkeypatch.delenv("RUNGUARD_PUBLIC_MODE", raising=False)
+    users = UserRepository(postgres_url)
+    users.migrate()
+    control = DemoControl(postgres_url)
+    try:
+        control.pause()
+        with DemoWorkerRunner(postgres_url) as runner:
+            with runner.db.sessions() as session:
+                assert session.scalar(text("SELECT last_seen_at FROM worker_heartbeat WHERE id = 1")) is None
+            runner._touch_heartbeat()
+            with runner.db.sessions() as session:
+                assert session.scalar(text("SELECT last_seen_at FROM worker_heartbeat WHERE id = 1")) is None
+            control.cleanup()
+            runner._touch_heartbeat()
+            with runner.db.sessions() as session:
+                assert session.scalar(text("SELECT last_seen_at FROM worker_heartbeat WHERE id = 1")) is not None
+    finally:
+        control.cleanup()
+        control.close()
+        users.close()
+
+
 def test_external_responder_pg_demo_recovery_is_owned_audited_and_idempotent(
         postgres_url, monkeypatch):
     monkeypatch.setenv("RUNGUARD_DEMO_MODE", "true")
