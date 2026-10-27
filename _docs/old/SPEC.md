@@ -1105,6 +1105,11 @@ The normal website, API, and job worker have no build-time or startup
 dependency on the external package. Existing incident and action records,
 owned-alert checks, fixed evidence fields, and idempotent audited remediation
 must survive the split. The demo action stays unavailable in the normal stack.
+Keep one maintained owner for each local smoke/recovery script. When the
+responder moves, move its isolated drill script with it or leave only a thin
+RunGuard integration caller; do not keep duplicate responder logic. A script
+with no Makefile, CI, documentation, or test caller must be either connected
+to a verified use or removed after its coverage is accounted for.
 
 **Rubric trade-off:** A read-only diagnosis demonstrates investigation but **may not earn** the on-call criterion's full credit, which explicitly asks for an agent that wakes on an alert and fixes an issue. The narrowly bounded demo remediation addresses that criterion without undermining manual job retry.
 
