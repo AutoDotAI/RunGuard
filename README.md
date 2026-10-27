@@ -122,4 +122,5 @@ For optional read-only host Codex/Claude analysis of an owned open incident,
 see [incident investigation](docs/incident-ai.md). No CLI login or API key is
 mounted into a container. The [reviewer guide](docs/reviewer-guide.md) and
 [evidence index](docs/reviewer-evidence.md) show verified local checks and
-remaining limitations.
+remaining limitations. The [Zoomcamp evidence audit](docs/zoomcamp-evidence.md)
+maps the delivered local work to the course criteria and lists deferred work.
