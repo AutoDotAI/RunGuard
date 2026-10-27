@@ -53,7 +53,11 @@ Only configured status and model names are returned to the page; the key is
 sent once in an authenticated request and stored encrypted for your account.
 The browser does not store it. The normal Compose worker can use an account
 key without receiving a host CLI login. A real provider request may cost
-money; the automated tests use fakes and spend nothing.
+money; the automated tests use fakes and spend nothing. The personal-key
+chooser offers the two approved OpenAI and Anthropic models. An existing
+server-configured model remains visible when already saved, but is not offered
+as a new personal-key choice. Operators configure those legacy models and
+their keys in the server environment, outside this account-key form.
 
 An unavailable selected provider fails visibly with
 `MODEL_PROVIDER_UNAVAILABLE` before any CLI/API request. A failed attempted

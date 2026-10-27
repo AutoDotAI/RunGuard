@@ -36,8 +36,9 @@ const catalog: AiProviderCatalog = {
       available: true,
       unavailable_reason: null,
       models: [
-        { id: "openai/gpt-6", label: "GPT-6 API" },
-        { id: "anthropic/claude-sonnet", label: "Claude Sonnet API" },
+        { id: "openai/gpt-4.1-mini", label: "GPT-4.1 mini API" },
+        { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet API" },
+        { id: "openai/test-model", label: "Operator model" },
       ],
     },
   ],
@@ -177,6 +178,7 @@ describe("AI settings", () => {
     fireEvent.click(screen.getByRole("radio", { name: /API key — OpenAI/ }));
     expect(screen.getByText("OpenAI key: not configured")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save AI settings" })).toBeDisabled();
+    expect(screen.queryByRole("option", { name: "Operator model" })).not.toBeInTheDocument();
     const secret = "sk-test-secret-value";
     const setItem = vi.spyOn(Storage.prototype, "setItem");
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: secret } });
@@ -186,10 +188,10 @@ describe("AI settings", () => {
     expect(screen.getByLabelText("Replace API key")).toHaveValue("");
     expect(screen.queryByText(secret)).not.toBeInTheDocument();
     expect(JSON.stringify(setItem.mock.calls)).not.toContain(secret);
-    expect(screen.getByLabelText("Model")).toHaveValue("openai/gpt-6");
+    expect(screen.getByLabelText("Model")).toHaveValue("openai/gpt-4.1-mini");
     fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
     await waitFor(() => expect(api.updateAiSettings).toHaveBeenCalledWith({
-      provider_path: "api", provider: "litellm", model: "openai/gpt-6",
+      provider_path: "api", provider: "litellm", model: "openai/gpt-4.1-mini",
     }));
     fireEvent.click(screen.getByRole("button", { name: "Delete key" }));
     expect(await screen.findByText("OpenAI key: not configured")).toBeInTheDocument();
@@ -207,7 +209,7 @@ describe("AI settings", () => {
     show(api);
     fireEvent.click(await screen.findByRole("radio", { name: /API key — OpenAI/ }));
     fireEvent.change(screen.getByLabelText("API provider"), { target: { value: "anthropic" } });
-    expect(screen.getByLabelText("Model")).toHaveValue("anthropic/claude-sonnet");
+    expect(screen.getByLabelText("Model")).toHaveValue("anthropic/claude-sonnet-4-6");
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "short" } });
     expect(screen.getByRole("button", { name: "Save key" })).toBeDisabled();
     expect(screen.getByText(/Enter a key of 8–512 characters/)).toBeInTheDocument();
@@ -223,7 +225,7 @@ describe("AI settings", () => {
   it("restores the saved Anthropic API model without showing a key", async () => {
     const api = client({
       getAiSettings: vi.fn().mockResolvedValue({
-        provider_path: "api", provider: "litellm", model: "anthropic/claude-sonnet", available: true,
+        provider_path: "api", provider: "litellm", model: "anthropic/claude-sonnet-4-6", available: true,
       }),
       getAiCredentials: vi.fn().mockResolvedValue({ credentials: [
         { provider: "openai", configured: false }, { provider: "anthropic", configured: true },
@@ -232,8 +234,25 @@ describe("AI settings", () => {
     show(api);
     expect(await screen.findByRole("radio", { name: /API key — OpenAI/ })).toBeChecked();
     expect(screen.getByLabelText("API provider")).toHaveValue("anthropic");
-    expect(screen.getByLabelText("Model")).toHaveValue("anthropic/claude-sonnet");
+    expect(screen.getByLabelText("Model")).toHaveValue("anthropic/claude-sonnet-4-6");
     expect(screen.getByLabelText("Replace API key")).toHaveValue("");
+  });
+
+  it("displays an existing server-configured model without offering it as a new personal-key choice", async () => {
+    const api = client({
+      getAiSettings: vi.fn().mockResolvedValue({
+        provider_path: "api", provider: "litellm", model: "openai/test-model", available: true,
+      }),
+      getAiCredentials: vi.fn().mockResolvedValue({ credentials: [
+        { provider: "openai", configured: false }, { provider: "anthropic", configured: false },
+      ] }),
+    });
+    show(api);
+    expect(await screen.findByRole("radio", { name: /API key — OpenAI/ })).toBeChecked();
+    expect(screen.getByRole("option", { name: "Saved server model: Operator model" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Model")).toHaveValue("openai/test-model");
+    expect(screen.getByText(/This saved model uses a server-configured credential/)).toBeInTheDocument();
+    expect(screen.queryByText(/Save a key before selecting this API model/)).not.toBeInTheDocument();
   });
 
   it("shows loading while both authenticated requests are pending", () => {
@@ -330,18 +349,18 @@ describe("AI settings", () => {
     });
     const view = show(api);
     fireEvent.click(await screen.findByRole("radio", { name: /API key — OpenAI \/ Anthropic/ }));
-    expect(screen.getByLabelText("Model")).toHaveValue("openai/gpt-6");
+    expect(screen.getByLabelText("Model")).toHaveValue("openai/gpt-4.1-mini");
     fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
     expect(await screen.findByText(/AI settings saved/)).toBeInTheDocument();
     expect(api.updateAiSettings).toHaveBeenCalledWith({
       provider_path: "api",
       provider: "litellm",
-      model: "openai/gpt-6",
+      model: "openai/gpt-4.1-mini",
     });
     view.unmount();
     show(api);
     expect(await screen.findByRole("radio", { name: /API key — OpenAI \/ Anthropic/ })).toBeChecked();
-    expect(screen.getByLabelText("Model")).toHaveValue("openai/gpt-6");
+    expect(screen.getByLabelText("Model")).toHaveValue("openai/gpt-4.1-mini");
   });
 
   it("rejects an unsupported saved model and does not send it to the API", async () => {

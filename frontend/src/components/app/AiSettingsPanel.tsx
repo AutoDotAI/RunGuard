@@ -12,6 +12,10 @@ type SettingsClient = Pick<typeof api,
   "getAiCredentials" | "upsertAiCredential" | "deleteAiCredential">;
 const DEMO_POLL_INTERVAL_MS = 1_000;
 const DEMO_MAX_POLLS = 30;
+const PERSONAL_KEY_MODEL: Record<AiCredentialProvider, string> = {
+  openai: "openai/gpt-4.1-mini",
+  anthropic: "anthropic/claude-sonnet-4-6",
+};
 
 function providerKey(provider: AiProvider): string {
   return `${provider.provider_path}:${provider.provider}`;
@@ -157,10 +161,19 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
   );
   const modelAllowed = selected?.models.some((model) => model.id === choice?.model) ?? false;
   const keyConfigured = credentials.data?.credentials.find((entry) => entry.provider === keyProvider)?.configured ?? false;
+  const savedServerModel = settings.data?.provider_path === "api" &&
+    settings.data.model === choice?.model &&
+    !Object.values(PERSONAL_KEY_MODEL).includes(choice.model);
   const apiModels = selected?.provider_path === "api"
-    ? selected.models.filter((model) => model.id.startsWith(`${keyProvider}/`)) : [];
+    ? selected.models.filter((model) => model.id === PERSONAL_KEY_MODEL[keyProvider] ||
+      (settings.data?.provider_path === "api" && model.id === settings.data.model &&
+        !Object.values(PERSONAL_KEY_MODEL).includes(model.id)))
+      .map((model) => model.id === PERSONAL_KEY_MODEL[keyProvider] ? model : {
+        ...model, label: `Saved server model: ${model.label}`,
+      }) : [];
   const apiModelAllowed = selected?.provider_path !== "api" ||
-    (Boolean(choice?.model?.startsWith(`${keyProvider}/`)) && keyConfigured);
+    (choice?.model === PERSONAL_KEY_MODEL[keyProvider] ? keyConfigured :
+      Boolean(savedServerModel && settings.data?.available));
   const valid = Boolean(choice && selected?.available && modelAllowed && apiModelAllowed);
   const unavailableChoice = choice && (!selected || !selected.available);
 
@@ -230,7 +243,7 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
                       provider_path: provider.provider_path,
                       provider: provider.provider,
                       model: provider.provider_path === "api"
-                        ? provider.models.find((model) => model.id.startsWith(`${keyProvider}/`))?.id ?? ""
+                        ? provider.models.find((model) => model.id === PERSONAL_KEY_MODEL[keyProvider])?.id ?? ""
                         : provider.models[0]?.id ?? "",
                     });
                     setSaved(false);
@@ -275,7 +288,7 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
                 setKeyNotice(null);
                 setChoice((current) => current?.provider_path === "api" ? {
                   ...current,
-                  model: selected.models.find((model) => model.id.startsWith(`${provider}/`))?.id ?? "",
+                  model: selected.models.find((model) => model.id === PERSONAL_KEY_MODEL[provider])?.id ?? "",
                 } : current);
               }}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm">
@@ -308,7 +321,8 @@ export function AiSettingsPanel({ client = api }: { client?: SettingsClient }) {
           </div>
           {keyError && <p role="alert" className="text-sm text-destructive">{keyError}</p>}
           {keyNotice && <p role="status" className="text-sm text-success">{keyNotice}</p>}
-          {!keyConfigured && <p className="text-sm text-muted-foreground">Save a key before selecting this API model for runs.</p>}
+          {savedServerModel && <p className="text-sm text-muted-foreground">This saved model uses a server-configured credential. Its key is managed outside this page.</p>}
+          {!keyConfigured && !savedServerModel && <p className="text-sm text-muted-foreground">Save a key before selecting this API model for runs.</p>}
           {keyConfigured && !selected.available && <p className="text-sm text-destructive">The API worker is not connected. Refresh providers after it starts.</p>}
         </div>
       )}
