@@ -34,6 +34,15 @@ class AiSettingsRecord(Base):
     updated_at: Mapped[str] = mapped_column(String(35), nullable=False)
 
 
+class AiCredentialRecord(Base):
+    __tablename__ = "ai_credentials"
+
+    owner_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(16), primary_key=True)
+    ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(35), nullable=False)
+
+
 class WorkerRecord(Base):
     __tablename__ = "workers"
 

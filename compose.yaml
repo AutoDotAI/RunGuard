@@ -58,13 +58,17 @@ services:
 
   migrate:
     <<: *backend
+    # The app UID creates the model encryption key in its private subdirectory
+    # only after checking the migrated database has no saved ciphertext.
+    volumes:
+      - runguard_local_secrets:/run/runguard-secrets
     depends_on:
       postgres:
         condition: service_healthy
     command:
       - sh
       - -ec
-      - python -c 'from app.auth import TokenService; TokenService()' && alembic upgrade head
+      - python -c 'from app.auth import TokenService; TokenService()' && alembic upgrade head && python -m app.credential_bootstrap
     restart: "no"
 
   api:

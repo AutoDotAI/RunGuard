@@ -24,6 +24,9 @@ BASE_TABLES = (
 # heartbeat state is deliberately not imported; the new worker owns its lease.
 OPTIONAL_TABLES = ("ai_settings",)
 SOURCE_TABLES = frozenset((*BASE_TABLES, *OPTIONAL_TABLES))
+# A current-schema SQLite test fixture may contain this table. Its ciphertext
+# belongs to a different installation key and must never be copied as-is.
+EMPTY_ONLY_TABLES = frozenset(("ai_credentials",))
 # A paused demo or stale worker lease must not survive a database cutover.
 TRANSIENT_TABLES = frozenset(("demo_control_state", "worker_heartbeat"))
 SYSTEM_TABLES = frozenset(("alembic_version", "sqlite_sequence", *TRANSIENT_TABLES))
@@ -60,9 +63,12 @@ def _source_tables(snapshot: sqlite3.Connection) -> dict[str, list[str]]:
         raise ImportRefused("SQLite backup contains broken foreign keys")
     names = {row[0] for row in snapshot.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-    unexpected = names - SOURCE_TABLES - SYSTEM_TABLES
+    unexpected = names - SOURCE_TABLES - EMPTY_ONLY_TABLES - SYSTEM_TABLES
     if unexpected or not set(BASE_TABLES).issubset(names):
         raise ImportRefused("SQLite backup has missing or unrecognized application tables")
+    for name in names & EMPTY_ONLY_TABLES:
+        if snapshot.execute(f'SELECT 1 FROM "{name}" LIMIT 1').fetchone() is not None:
+            raise ImportRefused("SQLite backup contains encrypted credentials that cannot be imported")
     if "alembic_version" not in names:
         raise ImportRefused("SQLite backup has no Alembic revision")
     source_versions = [row[0] for row in snapshot.execute("SELECT version_num FROM alembic_version")]

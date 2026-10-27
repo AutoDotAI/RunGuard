@@ -184,6 +184,24 @@ def test_import_refuses_unmigrated_target(sqlite_source, postgres_url, tmp_path)
         import_sqlite(sqlite_source, postgres_url, tmp_path / "backup.sqlite3")
 
 
+def test_import_refuses_sqlite_ciphertext_from_another_installation(sqlite_source, postgres_url, tmp_path):
+    migrate_postgres(postgres_url)
+    with sqlite3.connect(sqlite_source) as connection:
+        connection.execute(
+            "INSERT INTO ai_credentials(owner_user_id,provider,ciphertext,updated_at) VALUES (?,?,?,?)",
+            ("owner-a", "openai", "ciphertext-from-other-installation", "2026-01-01T00:00:00Z"),
+        )
+    with pytest.raises(ImportRefused, match="encrypted credentials that cannot be imported"):
+        import_sqlite(sqlite_source, postgres_url, tmp_path / "backup.sqlite3")
+    engine = create_engine(postgres_url)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM users")) == 0
+            assert connection.scalar(text("SELECT count(*) FROM ai_credentials")) == 0
+    finally:
+        engine.dispose()
+
+
 def test_import_refuses_unknown_sqlite_revision(sqlite_source, postgres_url, tmp_path):
     migrate_postgres(postgres_url)
     with sqlite3.connect(sqlite_source) as connection:
